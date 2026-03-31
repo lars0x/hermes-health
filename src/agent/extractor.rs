@@ -12,7 +12,7 @@ use crate::services::loinc::LoincCatalog;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LabResultRow {
     pub marker_name: String,
-    pub value: f64,
+    pub value: serde_json::Value, // number, string ("Negative"), or null
     #[serde(default)]
     pub unit: Option<String>,
     pub reference_low: Option<f64>,
@@ -102,6 +102,19 @@ pub async fn run_direct_extraction(
     let mut unresolved = Vec::new();
 
     for row in rows {
+        // Extract numeric value, or store qualitative result (e.g., "Negative") as 0.0 with the text in original_value
+        let (value, original_value_str, is_qualitative) = match &row.value {
+            serde_json::Value::Number(n) => {
+                let v = n.as_f64().unwrap_or(0.0);
+                (v, v.to_string(), false)
+            }
+            serde_json::Value::String(s) => {
+                // Qualitative: "Negative", "Positive", "Reactive", etc.
+                (0.0, s.clone(), true)
+            }
+            serde_json::Value::Null => continue, // truly empty - skip
+            other => (0.0, other.to_string(), true),
+        };
         let marker_lower = row.marker_name.to_lowercase();
 
         // 1. Check tracked biomarkers by name/alias first (highest priority)
@@ -127,7 +140,7 @@ pub async fn run_direct_extraction(
                     // Unresolved
                     unresolved.push(UnresolvedMarker {
                         marker_name: row.marker_name,
-                        value: row.value.to_string(),
+                        value: value.to_string(),
                         unit: row.unit.clone().unwrap_or_default(),
                         reason: format!("Best LOINC match confidence {:.0}% is below threshold", best.confidence * 100.0),
                     });
@@ -136,7 +149,7 @@ pub async fn run_direct_extraction(
             } else {
                 unresolved.push(UnresolvedMarker {
                     marker_name: row.marker_name,
-                    value: row.value.to_string(),
+                    value: original_value_str.clone(),
                     unit: row.unit.clone().unwrap_or_default(),
                     reason: "No LOINC match found".to_string(),
                 });
@@ -144,25 +157,27 @@ pub async fn run_direct_extraction(
             }
         };
 
-        let original_str = row.value.to_string();
         let unit_str = row.unit.clone().unwrap_or_default();
 
-        let (canonical_value, canonical_unit) = if let Some(ref b) = bm {
+        // Skip unit conversion for qualitative results
+        let (canonical_value, canonical_unit) = if is_qualitative {
+            (value, unit_str.clone())
+        } else if let Some(ref b) = bm {
             match normalize::normalize_observation(
-                &pool, b.id, &b.unit, &original_str, &unit_str,
+                &pool, b.id, &b.unit, &original_value_str, &unit_str,
             ).await {
                 Ok(norm) => (norm.value, norm.canonical_unit),
-                Err(_) => (row.value, unit_str.clone()),
+                Err(_) => (value, unit_str.clone()),
             }
         } else {
-            (row.value, unit_str.clone())
+            (value, unit_str.clone())
         };
 
         observations.push(ExtractedObservation {
             marker_name: row.marker_name,
             loinc_code,
-            value: row.value,
-            original_value: original_str,
+            value,
+            original_value: original_value_str,
             unit: unit_str,
             canonical_unit,
             canonical_value,
