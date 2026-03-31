@@ -327,9 +327,34 @@ pub struct MapForm {
 // Helpers
 
 fn extract_pdf_text(path: &str) -> Result<String, HermesError> {
+    // Try Rust pdf-extract first
     let bytes = std::fs::read(path)?;
-    pdf_extract::extract_text_from_mem(&bytes)
-        .map_err(|e| HermesError::Pdf(format!("Failed to extract text from PDF: {e}")))
+    match pdf_extract::extract_text_from_mem(&bytes) {
+        Ok(text) if !text.trim().is_empty() => return Ok(text),
+        Ok(_) => tracing::warn!("pdf-extract returned empty text, trying Python fallback"),
+        Err(e) => tracing::warn!("pdf-extract failed: {e}, trying Python fallback"),
+    }
+
+    // Fallback: use Python pypdf (handles encrypted PDFs common in Singapore lab reports)
+    let output = std::process::Command::new("python3")
+        .args(["-c", &format!(
+            "import pypdf; r = pypdf.PdfReader('{}'); print('\\n'.join(p.extract_text() for p in r.pages))",
+            path.replace('\'', "\\'")
+        )])
+        .output()
+        .map_err(|e| HermesError::Pdf(format!("Failed to run Python PDF extractor: {e}")))?;
+
+    if output.status.success() {
+        let text = String::from_utf8_lossy(&output.stdout).to_string();
+        if text.trim().is_empty() {
+            return Err(HermesError::Pdf("PDF text extraction returned empty result".to_string()));
+        }
+        tracing::info!("Extracted {} chars from PDF via Python fallback", text.len());
+        Ok(text)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(HermesError::Pdf(format!("Python PDF extraction failed: {stderr}")))
+    }
 }
 
 fn get_extraction_result(

@@ -85,6 +85,7 @@ async fn run_agentic_extraction(
         .agent(&config.ollama.model)
         .preamble(prompts::AGENT_PREAMBLE)
         .temperature(config.ollama.temperature)
+        .default_max_turns(config.extraction.max_agent_turns as usize)
         .tool(loinc_tool)
         .tool(unit_tool)
         .tool(validate_tool)

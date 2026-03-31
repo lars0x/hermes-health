@@ -12,7 +12,7 @@ temperature = 0.0
 timeout_seconds = 300
 
 [extraction]
-mode = "agentic"
+mode = "direct"
 max_agent_turns = 20
 validation_strictness = "warn"
 
