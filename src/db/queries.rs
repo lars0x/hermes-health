@@ -459,6 +459,48 @@ pub async fn get_intervention_targets(
     Ok(targets)
 }
 
+pub async fn get_intervention_by_id(pool: &SqlitePool, id: i64) -> Result<Intervention> {
+    sqlx::query_as::<_, Intervention>("SELECT * FROM interventions WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| HermesError::NotFound(format!("intervention id={id}")))
+}
+
+pub async fn end_intervention(pool: &SqlitePool, id: i64, ended_at: &str) -> Result<()> {
+    sqlx::query("UPDATE interventions SET ended_at = ? WHERE id = ?")
+        .bind(ended_at)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn delete_intervention_targets(pool: &SqlitePool, intervention_id: i64) -> Result<()> {
+    sqlx::query("DELETE FROM intervention_biomarker_targets WHERE intervention_id = ?")
+        .bind(intervention_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn insert_intervention_target(
+    pool: &SqlitePool,
+    intervention_id: i64,
+    biomarker_id: i64,
+    expected_effect: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO intervention_biomarker_targets (intervention_id, biomarker_id, expected_effect) VALUES (?, ?, ?)"
+    )
+    .bind(intervention_id)
+    .bind(biomarker_id)
+    .bind(expected_effect)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 // --- Dashboard helpers ---
 
 pub async fn count_biomarkers(pool: &SqlitePool) -> Result<i64> {

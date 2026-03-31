@@ -1,6 +1,7 @@
 pub mod api;
 pub mod biomarker;
 pub mod dashboard;
+pub mod intervention;
 pub mod observation;
 pub mod report;
 

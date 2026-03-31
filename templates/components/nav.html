@@ -4,8 +4,9 @@
   <div class="nav-links">
     <a href="/" {% if current_path == "/" %}class="active"{% endif %}>Dashboard</a>
     <a href="/biomarkers" {% if "/biomarkers" in current_path %}class="active"{% endif %}>Biomarkers</a>
+    <a href="/interventions" {% if "/interventions" in current_path %}class="active"{% endif %}>Interventions</a>
     <a href="/entry" {% if current_path == "/entry" %}class="active"{% endif %}>Add Data</a>
-    <a href="/import" {% if current_path == "/import" %}class="active"{% endif %}>Import</a>
+    <a href="/import" {% if "/import" in current_path %}class="active"{% endif %}>Import</a>
     <a href="/settings" {% if current_path == "/settings" %}class="active"{% endif %}>Settings</a>
   </div>
   <div class="nav-hamburger" onclick="this.parentElement.classList.toggle('open')">

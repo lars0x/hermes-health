@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ intervention.name }} - Hermes Health{% endblock %}
+{% block content %}
+<div style="max-width: 600px;">
+  <div style="margin-bottom: 12px;">
+    <a href="/interventions" style="font-size: 12px;">&larr; Back to interventions</a>
+  </div>
+
+  <div class="card" style="margin-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: start;">
+      <div>
+        <h1 style="font-size: 18px; font-weight: 500; margin-bottom: 4px;">{{ intervention.name }}</h1>
+        <span class="pill pill-{{ intervention.category }}">{{ intervention.category }}</span>
+      </div>
+      {% if not intervention.ended_at %}
+      <button class="pill-btn" style="font-size: 11px; color: var(--red); border-color: var(--red);"
+              hx-post="/api/v1/interventions/{{ intervention.id }}/end"
+              hx-target="#action-result"
+              hx-swap="innerHTML"
+              hx-confirm="End this intervention today?">End intervention</button>
+      {% endif %}
+    </div>
+
+    <div id="action-result" style="margin-top: 8px;"></div>
+
+    <div style="margin-top: 12px; font-size: 13px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px;">
+      {% if intervention.dosage %}
+      <div><strong style="color: var(--text-primary);">Dosage:</strong> {{ intervention.dosage }}</div>
+      {% endif %}
+      {% if intervention.frequency %}
+      <div><strong style="color: var(--text-primary);">Frequency:</strong> {{ intervention.frequency }}</div>
+      {% endif %}
+      <div><strong style="color: var(--text-primary);">Started:</strong> {{ intervention.started_at }}</div>
+      {% if intervention.ended_at %}
+      <div><strong style="color: var(--text-primary);">Ended:</strong> {{ intervention.ended_at }}</div>
+      {% else %}
+      <div><strong style="color: var(--text-primary);">Status:</strong> <span class="text-green">ongoing</span></div>
+      {% endif %}
+      {% if intervention.notes %}
+      <div><strong style="color: var(--text-primary);">Notes:</strong> {{ intervention.notes }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if targets %}
+  <div class="card">
+    <div class="card-title">Target biomarkers</div>
+    <table class="obs-table">
+      <thead>
+        <tr>
+          <th>Biomarker</th>
+          <th>Expected effect</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in targets %}
+        <tr>
+          <td>
+            <a href="/biomarkers/{{ t.biomarker_id }}" style="font-weight: 500;">{{ t.name }}</a>
+            <div style="font-size: 11px; color: var(--text-secondary); font-family: var(--mono);">{{ t.loinc_code }}</div>
+          </td>
+          <td>
+            {% if t.expected_effect == "increase" %}
+              <span class="text-green">&#9650; increase</span>
+            {% elif t.expected_effect == "decrease" %}
+              <span class="text-green">&#9660; decrease</span>
+            {% else %}
+              <span class="text-blue">&#9654; stabilize</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/biomarkers/{{ t.biomarker_id }}" style="font-size: 11px;">view trend &rarr;</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="card-title">Target biomarkers</div>
+    <div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;">No target biomarkers linked yet.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

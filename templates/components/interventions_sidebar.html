@@ -2,7 +2,7 @@
   <div class="card-title">Active interventions</div>
   {% if interventions %}
     {% for i in interventions %}
-    <div class="intervention-item">
+    <a href="/interventions/{{ i.id }}" class="intervention-item" style="text-decoration:none;color:inherit;display:block;">
       <div class="intervention-header">
         <span class="pill pill-{{ i.category }}">{{ i.category }}</span>
         <span style="font-size: 13px;">{{ i.name }}</span>
@@ -10,7 +10,7 @@
       <div class="intervention-meta">
         {% if i.frequency %}{{ i.frequency }} &middot; {% endif %}since {{ i.started_at }}
       </div>
-    </div>
+    </a>
     {% endfor %}
   {% else %}
     <div style="font-size: 13px; color: var(--text-secondary); padding: 6px 0;">No active interventions</div>

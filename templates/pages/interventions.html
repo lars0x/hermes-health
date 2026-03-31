@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Interventions - Hermes Health{% endblock %}
+{% block content %}
+<div style="max-width: 800px;">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h1 style="font-size: 18px; font-weight: 500;">Interventions</h1>
+  </div>
+
+  <!-- Create form -->
+  <div class="card" style="margin-bottom: 16px;">
+    <div class="card-title">Add intervention</div>
+    <div id="create-result"></div>
+    <form hx-post="/api/v1/interventions/create"
+          hx-target="#create-result"
+          hx-swap="innerHTML">
+
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" name="name" placeholder="e.g. NMN (Uthever) 500mg" required>
+      </div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <div class="pill-group">
+          {% for cat in ["supplement", "medication", "diet", "exercise", "fasting", "other"] %}
+          <label class="pill-btn {% if cat == 'supplement' %}active{% endif %}" onclick="this.querySelector('input').checked=true; updatePills(this)">
+            <input type="radio" name="category" value="{{ cat }}" {% if cat == 'supplement' %}checked{% endif %} style="display:none"> {{ cat|capitalize }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Dosage</label>
+          <input type="text" name="dosage" placeholder="e.g. 500mg">
+        </div>
+        <div class="form-group">
+          <label>Frequency</label>
+          <input type="text" name="frequency" placeholder="e.g. daily, MWF">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Start date</label>
+          <input type="date" name="started_at" value="{{ today }}" required>
+        </div>
+        <div class="form-group">
+          <label>End date (leave empty if ongoing)</label>
+          <input type="date" name="ended_at">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" placeholder="Optional notes..."></textarea>
+      </div>
+
+      <input type="hidden" name="target_biomarker_ids" id="target-ids" value="">
+      <input type="hidden" name="target_effects" id="target-effects" value="">
+
+      <button type="submit" class="btn-primary" style="max-width: 200px;">Add intervention</button>
+    </form>
+  </div>
+
+  <!-- Interventions list -->
+  <div class="card">
+    <div class="card-title">All interventions</div>
+    {% if interventions %}
+    <table class="obs-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Category</th>
+          <th>Dosage</th>
+          <th>Period</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in interventions %}
+        <tr style="cursor: pointer;" onclick="window.location='/interventions/{{ i.id }}'">
+          <td style="font-weight: 500;">{{ i.name }}</td>
+          <td><span class="pill pill-{{ i.category }}">{{ i.category }}</span></td>
+          <td style="font-size: 12px; color: var(--text-secondary);">
+            {{ i.dosage|default("") }}{% if i.frequency %} &middot; {{ i.frequency }}{% endif %}
+          </td>
+          <td style="font-size: 12px; color: var(--text-secondary);">
+            {{ i.started_at }}{% if i.ended_at %} to {{ i.ended_at }}{% else %} - ongoing{% endif %}
+          </td>
+          <td>
+            {% if i.active %}
+              <span class="pill pill-exercise">active</span>
+            {% else %}
+              <span class="pill pill-other">ended</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;">No interventions yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

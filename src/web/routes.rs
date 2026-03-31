@@ -28,6 +28,8 @@ pub fn router() -> Router<AppState> {
         .route("/biomarkers", get(handlers::biomarker::biomarkers_list))
         .route("/biomarkers/{id}", get(handlers::biomarker::biomarker_detail))
         .route("/entry", get(handlers::observation::data_entry_page))
+        .route("/interventions", get(handlers::intervention::interventions_page))
+        .route("/interventions/{id}", get(handlers::intervention::intervention_detail))
         .route("/import", get(handlers::report::import_page))
         .route("/imports/list", get(handlers::report::imports_list))
         .route("/imports/{id}", get(handlers::report::import_detail))
@@ -71,6 +73,15 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/interventions",
             get(handlers::api::list_interventions),
+        )
+        // Interventions
+        .route(
+            "/api/v1/interventions/create",
+            post(handlers::intervention::create_intervention),
+        )
+        .route(
+            "/api/v1/interventions/{id}/end",
+            post(handlers::intervention::end_intervention),
         )
         // Reports & Imports
         .route(
