@@ -164,6 +164,15 @@ pub async fn run_direct_extraction(
         });
     }
 
+    // Second pass: use LLM to resolve remaining unmatched markers
+    if !unresolved.is_empty() && !tracked.is_empty() {
+        let (resolved, still_unresolved) = llm_resolve_markers(
+            &client, &config, &tracked, &pool, unresolved,
+        ).await;
+        observations.extend(resolved);
+        unresolved = still_unresolved;
+    }
+
     Ok(ExtractionResult {
         observations,
         unresolved,
@@ -171,6 +180,165 @@ pub async fn run_direct_extraction(
         agent_turns: 1,
         test_date,
     })
+}
+
+/// Use the LLM to map unresolved marker names to tracked biomarkers.
+/// Sends a single batch request: "which of these known biomarkers does each unresolved name correspond to?"
+async fn llm_resolve_markers(
+    client: &reqwest::Client,
+    config: &HermesConfig,
+    tracked: &[crate::db::models::Biomarker],
+    pool: &SqlitePool,
+    unresolved: Vec<UnresolvedMarker>,
+) -> (Vec<ExtractedObservation>, Vec<UnresolvedMarker>) {
+    // Build the list of known biomarker names for the prompt
+    let known_list: Vec<String> = tracked
+        .iter()
+        .map(|b| format!("{} ({})", b.name, b.loinc_code))
+        .collect();
+
+    let unresolved_names: Vec<&str> = unresolved.iter().map(|u| u.marker_name.as_str()).collect();
+
+    let prompt = format!(
+        "/nothink\nI have these biomarker names from a lab report that I could not automatically match:\n{}\n\nHere are the known biomarkers in my system:\n{}\n\nFor each unresolved name, tell me which known biomarker it maps to (if any). Return JSON:\n{{\"mappings\": [{{\"from\": \"lab report name\", \"to_loinc\": \"LOINC code or null if no match\"}}]}}",
+        unresolved_names.join(", "),
+        known_list.join("\n")
+    );
+
+    let response = client
+        .post(format!("{}/api/chat", config.ollama.url))
+        .json(&serde_json::json!({
+            "model": config.ollama.model,
+            "messages": [
+                {"role": "system", "content": "/nothink"},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": false,
+            "format": "json",
+            "think": false,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": 2048,
+                "num_ctx": 8192
+            }
+        }))
+        .send()
+        .await;
+
+    let response = match response {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("LLM marker resolution request failed: {e}");
+            return (vec![], unresolved);
+        }
+    };
+
+    let body: serde_json::Value = match response.json().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("Failed to parse LLM resolution response: {e}");
+            return (vec![], unresolved);
+        }
+    };
+
+    let response_text = body
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // Strip markdown fences
+    let cleaned = if response_text.trim().starts_with("```") {
+        let first_nl = response_text.find('\n').unwrap_or(3);
+        let inner = &response_text[first_nl..];
+        inner.rfind("```").map(|p| &inner[..p]).unwrap_or(inner).trim()
+    } else {
+        response_text.trim()
+    };
+
+    // Parse mappings
+    #[derive(serde::Deserialize)]
+    struct MappingResponse {
+        mappings: Vec<Mapping>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Mapping {
+        from: String,
+        to_loinc: Option<String>,
+    }
+
+    let mappings: Vec<Mapping> = match serde_json::from_str::<MappingResponse>(cleaned) {
+        Ok(r) => r.mappings,
+        Err(_) => {
+            // Try parsing as Value and extracting
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(cleaned) {
+                if let Some(arr) = v.get("mappings").and_then(|m| m.as_array()) {
+                    arr.iter()
+                        .filter_map(|item| {
+                            Some(Mapping {
+                                from: item.get("from")?.as_str()?.to_string(),
+                                to_loinc: item.get("to_loinc").and_then(|v| v.as_str().map(String::from)),
+                            })
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                }
+            } else {
+                tracing::warn!("Could not parse LLM resolution response");
+                return (vec![], unresolved);
+            }
+        }
+    };
+
+    tracing::info!("LLM resolved {} marker mappings", mappings.len());
+
+    let mut resolved = Vec::new();
+    let mut still_unresolved = Vec::new();
+
+    for u in unresolved {
+        let mapping = mappings.iter().find(|m| {
+            m.from.to_lowercase() == u.marker_name.to_lowercase()
+        });
+
+        let loinc = mapping.and_then(|m| m.to_loinc.as_deref()).filter(|s| !s.is_empty() && *s != "null");
+
+        if let Some(loinc_code) = loinc {
+            // Find the tracked biomarker
+            if let Some(bm) = tracked.iter().find(|b| b.loinc_code == loinc_code) {
+                let value: f64 = u.value.parse().unwrap_or(0.0);
+                let original_str = u.value.clone();
+
+                let (canonical_value, canonical_unit) = match normalize::normalize_observation(
+                    pool, bm.id, &bm.unit, &original_str, &u.unit,
+                ).await {
+                    Ok(norm) => (norm.value, norm.canonical_unit),
+                    Err(_) => (value, u.unit.clone()),
+                };
+
+                resolved.push(ExtractedObservation {
+                    marker_name: u.marker_name,
+                    loinc_code: loinc_code.to_string(),
+                    value,
+                    original_value: original_str,
+                    unit: u.unit,
+                    canonical_unit,
+                    canonical_value,
+                    reference_low: None,
+                    reference_high: None,
+                    flag: None,
+                    confidence: 0.85, // LLM-resolved confidence
+                    detection_limit: None,
+                });
+                continue;
+            }
+        }
+
+        still_unresolved.push(u);
+    }
+
+    tracing::info!("LLM resolution: {} resolved, {} still unresolved", resolved.len(), still_unresolved.len());
+    (resolved, still_unresolved)
 }
 
 /// Parse the LLM's JSON response, returning (rows, test_date).
