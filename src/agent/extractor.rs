@@ -30,8 +30,17 @@ pub async fn run_direct_extraction(
 ) -> Result<ExtractionResult> {
     tracing::info!("Running direct extraction with model {}", config.ollama.model);
 
-    // Truncate to avoid context length issues
-    let text = if raw_text.len() > 8000 { &raw_text[..8000] } else { raw_text };
+    // Truncate to avoid context length issues (find a valid UTF-8 boundary)
+    let max_len = 8000;
+    let text = if raw_text.len() > max_len {
+        let mut end = max_len;
+        while end > 0 && !raw_text.is_char_boundary(end) {
+            end -= 1;
+        }
+        &raw_text[..end]
+    } else {
+        raw_text
+    };
 
     let prompt = format!(
         "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"reference_low\": number or null, \"reference_high\": number or null, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
