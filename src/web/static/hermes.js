@@ -6,9 +6,17 @@ function initCharts() {
     if (el._uplot) { el._uplot.destroy(); }
     try {
       var data = JSON.parse(el.dataset.chart);
-      if (!data.timestamps || data.timestamps.length < 2) {
-        el.innerHTML = '<div style="padding:40px;text-align:center;color:#6b6b6b;font-size:13px;">Not enough data points for chart</div>';
+      if (!data.timestamps || data.timestamps.length < 1) {
+        el.innerHTML = '<div style="padding:40px;text-align:center;color:#6b6b6b;font-size:13px;">No data points yet</div>';
         return;
+      }
+
+      // For a single point, add padding timestamps so uPlot has a visible x range
+      if (data.timestamps.length === 1) {
+        var t = data.timestamps[0];
+        var dayInSec = 86400;
+        data.timestamps = [t - 30 * dayInSec, t, t + 30 * dayInSec];
+        data.values = [null, data.values[0], null];
       }
 
       var regression = null;
@@ -20,7 +28,7 @@ function initCharts() {
       var unit = el.dataset.unit || '';
 
       // Compute Y range with padding
-      var allVals = data.values.slice();
+      var allVals = data.values.filter(function(v) { return v != null; });
       if (data.reference_low != null) allVals.push(data.reference_low);
       if (data.reference_high != null) allVals.push(data.reference_high);
       if (data.optimal_low != null) allVals.push(data.optimal_low);
@@ -37,15 +45,17 @@ function initCharts() {
           label: unit,
           stroke: '#378ADD',
           width: 2,
-          points: { size: 6, fill: '#378ADD' }
+          spanGaps: false,
+          points: { size: 8, fill: '#378ADD' }
         }
       ];
 
-      // Add regression line if available
-      if (regression && regression.slope != null && data.timestamps.length >= 2) {
-        var t0 = data.timestamps[0];
-        var tN = data.timestamps[data.timestamps.length - 1];
-        var v0 = data.values[0];
+      // Add regression line if available (need at least 2 real non-null values)
+      var realPoints = data.values.filter(function(v) { return v != null; }).length;
+      if (regression && regression.slope != null && realPoints >= 2) {
+        var firstReal = data.values.findIndex(function(v) { return v != null; });
+        var t0 = data.timestamps[firstReal];
+        var v0 = data.values[firstReal];
         var slopePerSec = regression.slope / (365.25 * 86400);
         var regVals = data.timestamps.map(function(t) {
           return v0 + slopePerSec * (t - t0);
