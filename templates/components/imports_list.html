@@ -1,36 +1,36 @@
-{% if reports %}
+{% if imports %}
 <table class="obs-table">
   <thead>
     <tr>
       <th>File</th>
-      <th>Format</th>
+      <th>Model</th>
       <th>Status</th>
-      <th>Imported</th>
+      <th>Date</th>
       <th>Results</th>
     </tr>
   </thead>
   <tbody>
-    {% for r in reports %}
-    <tr style="cursor: pointer;" onclick="window.location='/imports/{{ r.id }}'">
-      <td style="font-weight: 500;">{{ r.filename }}</td>
-      <td>{{ r.format }}</td>
+    {% for i in imports %}
+    <tr style="cursor: pointer;" onclick="window.location='/imports/{{ i.id }}'">
+      <td style="font-weight: 500;">{{ i.filename }}</td>
+      <td style="font-size: 11px; color: var(--text-secondary);">{{ i.model_used }}</td>
       <td>
-        {% if r.extraction_status == "committed" %}
+        {% if i.status == "committed" %}
           <span class="pill pill-exercise">committed</span>
-        {% elif r.extraction_status == "extracted" %}
+        {% elif i.status == "extracted" %}
           <span class="pill pill-supplement">ready for review</span>
-        {% elif r.extraction_status == "failed" %}
+        {% elif i.status == "failed" %}
           <span class="pill pill-medication">failed</span>
-        {% elif r.extraction_status == "extracting" %}
+        {% elif i.status == "extracting" or i.status == "pending" %}
           <span class="pill" style="background: var(--info-bg); color: var(--info-text);">extracting...</span>
         {% else %}
-          <span class="pill pill-other">{{ r.extraction_status }}</span>
+          <span class="pill pill-other">{{ i.status }}</span>
         {% endif %}
       </td>
-      <td style="font-size:12px; color: var(--text-secondary);">{{ r.imported_at }}</td>
+      <td style="font-size:12px; color: var(--text-secondary);">{{ i.created_at }}</td>
       <td style="font-size:12px;">
-        {% if r.extracted_count %}{{ r.extracted_count }} found{% endif %}
-        {% if r.unresolved_count %}, {{ r.unresolved_count }} unresolved{% endif %}
+        {% if i.extracted_count %}{{ i.extracted_count }} found{% endif %}
+        {% if i.unresolved_count %}, {{ i.unresolved_count }} unresolved{% endif %}
       </td>
     </tr>
     {% endfor %}

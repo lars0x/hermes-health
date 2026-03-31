@@ -16,7 +16,7 @@
   </div>
 
   <form id="commit-form"
-        hx-post="/api/v1/reports/{{ report_id }}/commit"
+        hx-post="/api/v1/imports/{{ import_id }}/commit"
         hx-target="#commit-result"
         hx-swap="innerHTML">
     <input type="hidden" name="selected" id="selected-indices" value="">
@@ -94,7 +94,7 @@
           <td><span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">unresolved</span></td>
           <td>
             <span style="font-size: 11px; color: var(--amber-dark); cursor: pointer; text-decoration: underline;"
-                  onclick="promptMap('{{ u.marker_name }}', {{ report_id }})">map</span>
+                  onclick="promptMap('{{ u.marker_name }}', {{ import_id }})">map</span>
           </td>
         </tr>
         {% endfor %}
@@ -121,7 +121,7 @@ function commitSelected() {
 function promptMap(markerName, reportId) {
   var code = prompt('Enter LOINC code for "' + markerName + '":');
   if (code) {
-    htmx.ajax('POST', '/api/v1/reports/' + reportId + '/map', {
+    htmx.ajax('POST', '/api/v1/imports/' + reportId + '/map', {
       values: { marker_name: markerName, loinc_code: code },
       target: 'closest tr td:last-child',
       swap: 'innerHTML'

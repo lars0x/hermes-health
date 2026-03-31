@@ -17,7 +17,7 @@ async fn setup() -> (sqlx::SqlitePool, loinc::LoincCatalog) {
 async fn test_seed_biomarkers() {
     let (pool, _catalog) = setup().await;
     let biomarkers = biomarker::list_biomarkers(&pool, None).await.unwrap();
-    assert_eq!(biomarkers.len(), 40);
+    assert_eq!(biomarkers.len(), 49);
 
     let tc = biomarkers
         .iter()
@@ -57,6 +57,8 @@ async fn test_add_observation_same_unit() {
         lab_name: Some("Parkway".to_string()),
         fasting: Some(true),
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -77,6 +79,8 @@ async fn test_add_observation_with_conversion() {
         lab_name: None,
         fasting: None,
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -99,6 +103,8 @@ async fn test_hba1c_conversion_with_offset() {
         lab_name: None,
         fasting: None,
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -124,6 +130,8 @@ async fn test_trend_analysis() {
             lab_name: None,
             fasting: Some(true),
             notes: None,
+            report_id: None,
+            import_id: None,
         };
         observation::add_observation(&pool, &catalog, &obs)
             .await
@@ -159,6 +167,8 @@ async fn test_trend_insufficient_data() {
             lab_name: None,
             fasting: None,
             notes: None,
+            report_id: None,
+            import_id: None,
         };
         observation::add_observation(&pool, &catalog, &obs)
             .await
@@ -188,6 +198,8 @@ async fn test_csv_export() {
         lab_name: Some("Parkway".to_string()),
         fasting: Some(true),
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -232,6 +244,8 @@ async fn test_unrecognized_unit_rejected() {
         lab_name: None,
         fasting: None,
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await;
     assert!(result.is_err());
@@ -250,6 +264,8 @@ async fn test_observation_precision_preserved() {
         lab_name: None,
         fasting: None,
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -270,12 +286,14 @@ async fn test_dashboard_summary() {
         lab_name: None,
         fasting: None,
         notes: None,
+        report_id: None,
+        import_id: None,
     };
     observation::add_observation(&pool, &catalog, &obs)
         .await
         .unwrap();
 
     let summary = biomarker::dashboard_summary(&pool).await.unwrap();
-    assert_eq!(summary.total_tracked, 40);
+    assert_eq!(summary.total_tracked, 49);
     assert!(summary.out_of_range >= 1); // HDL at 35 is out of reference range
 }

@@ -10,41 +10,44 @@
     <div class="card-title">{{ report.filename }}</div>
     <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 16px; flex-wrap: wrap;">
       <span>Format: {{ report.format }}</span>
-      <span>Imported: {{ report.imported_at }}</span>
-      {% if report.model_used %}<span>Model: {{ report.model_used }}</span>{% endif %}
-      {% if report.agent_turns %}<span>Agent turns: {{ report.agent_turns }}</span>{% endif %}
+      <span>Imported: {{ import.created_at }}</span>
+      {% if import.model_used %}<span>Model: {{ import.model_used }}</span>{% endif %}
+      {% if import.agent_turns %}<span>Agent turns: {{ import.agent_turns }}</span>{% endif %}
     </div>
     <div style="margin-top: 8px;">
-      {% if report.extraction_status == "committed" %}
+      {% if import.status == "committed" %}
         <span class="pill pill-exercise">committed</span>
-      {% elif report.extraction_status == "extracted" %}
+      {% elif import.status == "extracted" %}
         <span class="pill pill-supplement">ready for review</span>
-      {% elif report.extraction_status == "failed" %}
+      {% elif import.status == "failed" %}
         <span class="pill pill-medication">failed</span>
-      {% elif report.extraction_status == "extracting" %}
+      {% elif import.status == "extracting" %}
         <span class="pill" style="background: var(--info-bg); color: var(--info-text);">extracting...</span>
       {% else %}
-        <span class="pill pill-other">{{ report.extraction_status }}</span>
+        <span class="pill pill-other">{{ import.status }}</span>
       {% endif %}
     </div>
   </div>
 
   <div id="detail-content"
-    {% if report.extraction_status == "extracting" %}
-       hx-get="/api/v1/reports/{{ report.id }}/status"
+    {% if import.status == "extracting" or import.status == "pending" %}
+       hx-get="/api/v1/imports/{{ import_id }}/status"
        hx-trigger="every 3s"
        hx-swap="innerHTML"
     {% endif %}>
 
-    {% if report.extraction_status == "extracting" %}
+    {% if import.status == "extracting" or import.status == "pending" %}
       <div class="alert" style="background: var(--info-bg); color: var(--info-text);">
         Extracting biomarkers from your report. This may take 1-2 minutes...
       </div>
-    {% elif report.extraction_status == "extracted" and extraction %}
+    {% elif import.status == "extracted" and extraction %}
       {% include "components/review_table.html" %}
-    {% elif report.extraction_status == "committed" and extraction %}
+    {% elif import.status == "committed" and extraction %}
       <div class="card">
         <div class="card-title">Committed observations</div>
+        {% if extraction.test_date %}
+        <div style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">Test date: {{ extraction.test_date }}</div>
+        {% endif %}
         <table class="obs-table" style="font-size: 12px;">
           <thead>
             <tr><th>Marker</th><th>Value</th><th>Unit</th><th>LOINC</th><th>Confidence</th></tr>
@@ -61,21 +64,12 @@
             {% endfor %}
           </tbody>
         </table>
-        {% if extraction.test_date %}
-        <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">Test date: {{ extraction.test_date }}</div>
-        {% endif %}
       </div>
-    {% elif report.extraction_status == "failed" %}
+    {% elif import.status == "failed" %}
       <div class="alert alert-error">
         Extraction failed.
         {% if error_message %}{{ error_message }}{% endif %}
       </div>
-      <button class="btn-primary" style="max-width: 200px; margin-top: 8px;"
-              hx-post="/api/v1/reports/{{ report.id }}/extract"
-              hx-target="#detail-content"
-              hx-swap="innerHTML">Retry extraction</button>
-    {% else %}
-      <div style="font-size: 13px; color: var(--text-secondary);">Status: {{ report.extraction_status }}</div>
     {% endif %}
   </div>
 </div>

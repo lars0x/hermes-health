@@ -69,7 +69,8 @@ pub async fn add_observation(
         normalized.precision,
         &obs.observed_at,
         obs.lab_name.as_deref(),
-        None, // report_id
+        obs.report_id,
+        obs.import_id,
         obs.fasting,
         notes.as_deref(),
         normalized.detection_limit.as_deref(),

@@ -71,29 +71,25 @@ pub fn router() -> Router<AppState> {
             "/api/v1/interventions",
             get(handlers::api::list_interventions),
         )
-        // Reports
+        // Reports & Imports
         .route(
             "/api/v1/reports/upload",
             post(handlers::report::upload),
         )
         .route(
-            "/api/v1/reports/{id}/extract",
-            post(handlers::report::trigger_extraction),
+            "/api/v1/imports/{id}/status",
+            get(handlers::report::import_status),
         )
         .route(
-            "/api/v1/reports/{id}/status",
-            get(handlers::report::extraction_status),
-        )
-        .route(
-            "/api/v1/reports/{id}/extraction",
+            "/api/v1/imports/{id}/extraction",
             get(handlers::report::get_extraction_json),
         )
         .route(
-            "/api/v1/reports/{id}/commit",
+            "/api/v1/imports/{id}/commit",
             post(handlers::report::commit),
         )
         .route(
-            "/api/v1/reports/{id}/map",
+            "/api/v1/imports/{id}/map",
             post(handlers::report::map_marker),
         )
         // Form submission (HTMX)

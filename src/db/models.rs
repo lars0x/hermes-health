@@ -34,6 +34,7 @@ pub struct Observation {
     pub observed_at: String,
     pub lab_name: Option<String>,
     pub report_id: Option<i64>,
+    pub import_id: Option<i64>,
     pub fasting: Option<bool>,
     pub notes: Option<String>,
     pub detection_limit: Option<String>,
@@ -65,6 +66,20 @@ pub struct Report {
     pub agent_turns: Option<i64>,
     pub extracted_count: Option<i64>,
     pub unresolved_count: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Import {
+    pub id: i64,
+    pub report_id: i64,
+    pub model_used: Option<String>,
+    pub status: String,
+    pub raw_extraction: Option<String>,
+    pub agent_turns: Option<i64>,
+    pub extracted_count: Option<i64>,
+    pub unresolved_count: Option<i64>,
+    pub test_date: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -121,6 +136,10 @@ pub struct NewObservation {
     pub lab_name: Option<String>,
     pub fasting: Option<bool>,
     pub notes: Option<String>,
+    #[serde(default)]
+    pub report_id: Option<i64>,
+    #[serde(default)]
+    pub import_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

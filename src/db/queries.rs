@@ -100,13 +100,14 @@ pub async fn insert_observation(
     observed_at: &str,
     lab_name: Option<&str>,
     report_id: Option<i64>,
+    import_id: Option<i64>,
     fasting: Option<bool>,
     notes: Option<&str>,
     detection_limit: Option<&str>,
 ) -> Result<i64> {
     let result = sqlx::query(
-        "INSERT INTO observations (biomarker_id, value, original_value, original_unit, precision, observed_at, lab_name, report_id, fasting, notes, detection_limit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO observations (biomarker_id, value, original_value, original_unit, precision, observed_at, lab_name, report_id, import_id, fasting, notes, detection_limit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(biomarker_id)
     .bind(value)
@@ -116,6 +117,7 @@ pub async fn insert_observation(
     .bind(observed_at)
     .bind(lab_name)
     .bind(report_id)
+    .bind(import_id)
     .bind(fasting)
     .bind(notes)
     .bind(detection_limit)
@@ -320,6 +322,78 @@ pub async fn update_report_extraction(
     .bind(agent_turns)
     .bind(extracted_count)
     .bind(unresolved_count)
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+// --- Imports ---
+
+pub async fn create_import(pool: &SqlitePool, report_id: i64, model: &str) -> Result<i64> {
+    let result = sqlx::query(
+        "INSERT INTO imports (report_id, model_used, status) VALUES (?, ?, 'pending')"
+    )
+    .bind(report_id)
+    .bind(model)
+    .execute(pool)
+    .await?;
+    Ok(result.last_insert_rowid())
+}
+
+pub async fn get_import_by_id(pool: &SqlitePool, id: i64) -> Result<Import> {
+    sqlx::query_as::<_, Import>("SELECT * FROM imports WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| HermesError::NotFound(format!("import id={id}")))
+}
+
+pub async fn list_imports(pool: &SqlitePool) -> Result<Vec<Import>> {
+    let imports = sqlx::query_as::<_, Import>("SELECT * FROM imports ORDER BY created_at DESC")
+        .fetch_all(pool)
+        .await?;
+    Ok(imports)
+}
+
+pub async fn list_imports_for_report(pool: &SqlitePool, report_id: i64) -> Result<Vec<Import>> {
+    let imports = sqlx::query_as::<_, Import>(
+        "SELECT * FROM imports WHERE report_id = ? ORDER BY created_at DESC"
+    )
+    .bind(report_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(imports)
+}
+
+pub async fn update_import_status(pool: &SqlitePool, id: i64, status: &str) -> Result<()> {
+    sqlx::query("UPDATE imports SET status = ? WHERE id = ?")
+        .bind(status)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_import_result(
+    pool: &SqlitePool,
+    id: i64,
+    status: &str,
+    raw_extraction: Option<&str>,
+    agent_turns: i64,
+    extracted_count: i64,
+    unresolved_count: i64,
+    test_date: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE imports SET status = ?, raw_extraction = ?, agent_turns = ?, extracted_count = ?, unresolved_count = ?, test_date = ? WHERE id = ?"
+    )
+    .bind(status)
+    .bind(raw_extraction)
+    .bind(agent_turns)
+    .bind(extracted_count)
+    .bind(unresolved_count)
+    .bind(test_date)
     .bind(id)
     .execute(pool)
     .await?;
