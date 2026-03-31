@@ -83,7 +83,9 @@
             hx-post="/api/v1/reports/upload"
             hx-target="#import-progress"
             hx-swap="innerHTML"
-            hx-encoding="multipart/form-data">
+            hx-encoding="multipart/form-data"
+            hx-on::after-request="this.reset(); this.querySelector('button').disabled = false;"
+            hx-on::before-request="this.querySelector('button').disabled = true;"
         <div class="form-group">
           <label for="file">Select PDF or CSV file</label>
           <input type="file" name="file" id="file-input" accept=".pdf,.csv" required
