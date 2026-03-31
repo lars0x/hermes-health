@@ -17,9 +17,10 @@ pub async fn static_file(
                 header::CONTENT_TYPE,
                 mime.as_ref().parse().unwrap(),
             );
+            // No caching in debug mode so changes are picked up immediately
             response.headers_mut().insert(
                 header::CACHE_CONTROL,
-                "public, max-age=31536000, immutable".parse().unwrap(),
+                "no-cache, must-revalidate".parse().unwrap(),
             );
             response
         }
