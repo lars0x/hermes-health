@@ -66,28 +66,44 @@ pub fn start_worker(
                 }
             };
 
-            // Run extraction
-            match agent::run_extraction(pool.clone(), catalog.clone(), config.clone(), &raw_text).await {
-                Ok(result) => {
-                    let json = serde_json::to_string(&result).unwrap_or_default();
+            // Run extraction in a sub-task so panics don't kill the worker
+            let p = pool.clone();
+            let c = catalog.clone();
+            let cf = config.clone();
+            let import_id = job.import_id;
+
+            let result = tokio::spawn(async move {
+                agent::run_extraction(p, c, cf, &raw_text).await
+            }).await;
+
+            match result {
+                Ok(Ok(extraction)) => {
+                    let json = serde_json::to_string(&extraction).unwrap_or_default();
                     let _ = queries::update_import_result(
-                        &pool, job.import_id, "extracted", Some(&json),
-                        result.agent_turns as i64,
-                        result.observations.len() as i64,
-                        result.unresolved.len() as i64,
-                        result.test_date.as_deref(),
+                        &pool, import_id, "extracted", Some(&json),
+                        extraction.agent_turns as i64,
+                        extraction.observations.len() as i64,
+                        extraction.unresolved.len() as i64,
+                        extraction.test_date.as_deref(),
                     ).await;
                     tracing::info!(
                         "Import {} complete: {} observations, {} unresolved",
-                        job.import_id, result.observations.len(), result.unresolved.len()
+                        import_id, extraction.observations.len(), extraction.unresolved.len()
                     );
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     let error_json = serde_json::json!({"error": e.to_string()}).to_string();
                     let _ = queries::update_import_result(
-                        &pool, job.import_id, "failed", Some(&error_json), 0, 0, 0, None,
+                        &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None,
                     ).await;
-                    tracing::error!("Import {} extraction failed: {}", job.import_id, e);
+                    tracing::error!("Import {} extraction failed: {}", import_id, e);
+                }
+                Err(e) => {
+                    let error_json = serde_json::json!({"error": format!("Extraction task crashed: {}", e)}).to_string();
+                    let _ = queries::update_import_result(
+                        &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None,
+                    ).await;
+                    tracing::error!("Import {} extraction task panicked: {}", import_id, e);
                 }
             }
         }
