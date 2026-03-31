@@ -1,68 +1,119 @@
 {% extends "base.html" %}
-{% block title %}Add Observation - Hermes Health{% endblock %}
+{% block title %}Add Data - Hermes Health{% endblock %}
 {% block content %}
-<div class="card" style="max-width: 480px;">
-  <div class="card-title">Add observation</div>
+<div style="max-width: 800px;">
 
-  <div id="form-result"></div>
+  <!-- Tabs -->
+  <div style="display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border);">
+    <button class="tab-btn active" onclick="switchTab('manual', this)">Manual Entry</button>
+    <button class="tab-btn" onclick="switchTab('import', this)">Import Report</button>
+  </div>
 
-  <form hx-post="/observations/create"
-        hx-target="#form-result"
-        hx-swap="innerHTML">
+  <!-- Manual entry tab -->
+  <div id="tab-manual">
+    <div class="card" style="max-width: 480px;">
+      <div class="card-title">Add observation</div>
+      <div id="form-result"></div>
+      <form hx-post="/observations/create"
+            hx-target="#form-result"
+            hx-swap="innerHTML">
 
-    <div class="form-group autocomplete-wrapper">
-      <label for="biomarker">Biomarker</label>
-      <input type="hidden" id="biomarker-code" name="biomarker" value="">
-      <input type="text" id="biomarker-search" name="q" placeholder="Search by name or LOINC code..."
-             hx-get="/api/v1/biomarkers/search"
-             hx-trigger="keyup changed delay:300ms"
-             hx-target="#autocomplete-results"
-             hx-swap="innerHTML"
-             hx-include="[name='q']"
-             autocomplete="off">
-      <div id="autocomplete-results"></div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label for="value">Value</label>
-        <input type="number" name="value" id="obs-value" step="any" required>
-      </div>
-      <div class="form-group">
-        <label for="unit">Unit</label>
-        <input type="text" name="unit" id="obs-unit" placeholder="mg/dL" required>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label for="date">Date</label>
-      <input type="date" name="date" value="{{ today }}" required>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label for="lab">Lab</label>
-        <input type="text" name="lab" placeholder="e.g. Parkway">
-      </div>
-      <div class="form-group">
-        <label>Fasting</label>
-        <div class="pill-group">
-          <label class="pill-btn" onclick="this.querySelector('input').checked=true; updatePills(this)">
-            <input type="radio" name="fasting" value="yes" style="display:none"> Yes
-          </label>
-          <label class="pill-btn" onclick="this.querySelector('input').checked=true; updatePills(this)">
-            <input type="radio" name="fasting" value="no" style="display:none"> No
-          </label>
+        <div class="form-group autocomplete-wrapper">
+          <label for="biomarker">Biomarker</label>
+          <input type="hidden" id="biomarker-code" name="biomarker" value="">
+          <input type="text" id="biomarker-search" name="q" placeholder="Search by name or LOINC code..."
+                 hx-get="/api/v1/biomarkers/search"
+                 hx-trigger="keyup changed delay:300ms"
+                 hx-target="#autocomplete-results"
+                 hx-swap="innerHTML"
+                 hx-include="[name='q']"
+                 autocomplete="off">
+          <div id="autocomplete-results"></div>
         </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="value">Value</label>
+            <input type="number" name="value" id="obs-value" step="any" required>
+          </div>
+          <div class="form-group">
+            <label for="unit">Unit</label>
+            <input type="text" name="unit" id="obs-unit" placeholder="mg/dL" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="date">Date</label>
+          <input type="date" name="date" value="{{ today }}" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="lab">Lab</label>
+            <input type="text" name="lab" placeholder="e.g. Parkway">
+          </div>
+          <div class="form-group">
+            <label>Fasting</label>
+            <div class="pill-group">
+              <label class="pill-btn" onclick="this.querySelector('input').checked=true; updatePills(this)">
+                <input type="radio" name="fasting" value="yes" style="display:none"> Yes
+              </label>
+              <label class="pill-btn" onclick="this.querySelector('input').checked=true; updatePills(this)">
+                <input type="radio" name="fasting" value="no" style="display:none"> No
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Notes</label>
+          <textarea name="notes" placeholder="Optional notes..."></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary">Add observation</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Import tab -->
+  <div id="tab-import" style="display: none;">
+    <div class="card" style="margin-bottom: 12px;">
+      <div class="card-title">Upload lab report</div>
+      <form id="upload-form"
+            hx-post="/api/v1/reports/upload"
+            hx-target="#import-progress"
+            hx-swap="innerHTML"
+            hx-encoding="multipart/form-data">
+        <div class="form-group">
+          <label for="file">Select PDF or CSV file</label>
+          <input type="file" name="file" id="file-input" accept=".pdf,.csv" required
+                 style="font-size: 14px; padding: 8px 0;">
+        </div>
+        <button type="submit" class="btn-primary" style="max-width: 200px;">Upload & Extract</button>
+      </form>
+    </div>
+
+    <div id="import-progress"></div>
+
+    <div class="card">
+      <div class="card-title">Imports</div>
+      <div id="imports-list"
+           hx-get="/imports/list"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+        {% include "components/imports_list.html" %}
       </div>
     </div>
+  </div>
 
-    <div class="form-group">
-      <label for="notes">Notes</label>
-      <textarea name="notes" placeholder="Optional notes..."></textarea>
-    </div>
-
-    <button type="submit" class="btn-primary">Add observation</button>
-  </form>
 </div>
+
+<script>
+function switchTab(tab, btn) {
+  document.getElementById('tab-manual').style.display = tab === 'manual' ? '' : 'none';
+  document.getElementById('tab-import').style.display = tab === 'import' ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+</script>
 {% endblock %}

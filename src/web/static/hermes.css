@@ -425,6 +425,24 @@ textarea { resize: vertical; min-height: 60px; }
   margin-top: 12px;
 }
 
+/* Tabs */
+.tab-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font);
+}
+.tab-btn.active {
+  color: var(--info-text);
+  border-bottom-color: var(--info-text);
+}
+.tab-btn:hover { color: var(--text-primary); }
+
 /* Responsive */
 @media (max-width: 640px) {
   body { padding: 12px; }

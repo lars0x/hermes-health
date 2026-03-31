@@ -27,10 +27,29 @@ pub async fn data_entry_page(
 ) -> Result<Html<String>, HermesError> {
     let is_htmx = htmx::is_htmx_request(&headers);
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    // Load imports for the import tab
+    let imports_list = crate::db::queries::list_imports(&state.pool).await.unwrap_or_default();
+    let mut imports = Vec::new();
+    for imp in &imports_list {
+        let report = crate::db::queries::get_report_by_id(&state.pool, imp.report_id).await.ok();
+        imports.push(minijinja::context! {
+            id => imp.id,
+            filename => report.as_ref().map(|r| r.filename.clone()).unwrap_or_default(),
+            format => report.as_ref().map(|r| r.format.clone()).unwrap_or_default(),
+            model_used => imp.model_used,
+            status => imp.status,
+            extracted_count => imp.extracted_count,
+            unresolved_count => imp.unresolved_count,
+            created_at => imp.created_at,
+        });
+    }
+
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
         current_path => "/entry",
         today => today,
+        imports => imports,
     };
     let html = state.templates.render("pages/data_entry.html", ctx)?;
     Ok(Html(html))
