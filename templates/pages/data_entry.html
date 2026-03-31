@@ -100,7 +100,7 @@
       <div class="card-title">Imports</div>
       <div id="imports-list"
            hx-get="/imports/list"
-           hx-trigger="every 5s"
+           hx-trigger="every 5s, imports-updated from:body"
            hx-swap="innerHTML">
         {% include "components/imports_list.html" %}
       </div>

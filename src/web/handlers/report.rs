@@ -1,6 +1,6 @@
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use axum::response::Html;
+use axum::response::{Html, IntoResponse};
 use axum::Json;
 use axum_extra::extract::Multipart;
 use sha2::{Digest, Sha256};
@@ -73,7 +73,7 @@ pub async fn imports_list(
 pub async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<Html<String>, HermesError> {
+) -> Result<axum::response::Response, HermesError> {
     let mut file_bytes = Vec::new();
     let mut filename = String::new();
 
@@ -137,19 +137,25 @@ pub async fn upload(
         format: format.to_string(),
     });
 
-    Ok(Html(format!(
-        r##"<div class="alert alert-success">Uploaded: {} ({}). Extraction started with {}...</div>
+    // Return HTML + trigger imports list refresh
+    let html = format!(
+        r##"<div class="alert alert-success">Uploaded: {} ({}). Extraction queued.</div>
 <div id="extraction-status"
      hx-get="/api/v1/imports/{}/status"
      hx-trigger="load, every 3s"
      hx-target="#extraction-status"
      hx-swap="innerHTML">
   <div class="alert" style="background: var(--info-bg); color: var(--info-text);">
-    Extracting biomarkers from your report. This may take 1-2 minutes...
+    Waiting for extraction to start...
   </div>
 </div>"##,
-        filename, format, state.config.ollama.model, import_id
-    )))
+        filename, format, import_id
+    );
+
+    Ok((
+        [("HX-Trigger", "imports-updated")],
+        Html(html),
+    ).into_response())
 }
 
 // --- Import status polling ---
