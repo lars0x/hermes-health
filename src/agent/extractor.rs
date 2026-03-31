@@ -365,7 +365,7 @@ async fn llm_extract_test_date(
     let text = if raw_text.len() > 2000 { &raw_text[..2000] } else { raw_text };
 
     let prompt = format!(
-        "/nothink\nExtract the date the blood test or specimen was COLLECTED from this lab report.\nLook for: \"Date Collected\", \"Specimen Date\", \"Collection Date\", \"Date of Test\", \"Date Drawn\", \"Sample Date\".\nDo NOT use the report print date, report date, or date issued.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\"}} or {{\"test_date\": null}} if not found.\n\n{}",
+        "/nothink\nWhat date was the blood test or specimen collected? Look at all dates on this lab report and determine which one represents when the sample was taken from the patient. Ignore report printing or publishing dates. If multiple dates exist, pick the one closest to when the specimen was collected.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\", \"source_field\": \"the field name you found it in\", \"reasoning\": \"brief explanation of why you chose this date\"}} or {{\"test_date\": null, \"source_field\": null, \"reasoning\": \"why no date was found\"}} if not found.\n\n{}",
         text
     );
 
@@ -393,6 +393,10 @@ async fn llm_extract_test_date(
     let body: serde_json::Value = response.json().await.ok()?;
     let content = body.get("message")?.get("content")?.as_str()?;
 
+    // Debug: log the raw response
+    let _ = std::fs::write("/tmp/hermes-date-response.json", content);
+    tracing::info!("Date extraction LLM response: {}", &content[..content.len().min(200)]);
+
     // Strip markdown fences
     let cleaned = if content.trim().starts_with("```") {
         let first_nl = content.find('\n').unwrap_or(3);
@@ -404,12 +408,14 @@ async fn llm_extract_test_date(
 
     let parsed: serde_json::Value = serde_json::from_str(cleaned).ok()?;
     let date = parsed.get("test_date")?.as_str()?;
+    let source = parsed.get("source_field").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let reasoning = parsed.get("reasoning").and_then(|v| v.as_str()).unwrap_or("");
 
     if date.is_empty() || date == "null" {
-        tracing::info!("Test date not found in report");
+        tracing::info!("Test date not found in report. Reasoning: {}", reasoning);
         None
     } else {
-        tracing::info!("Extracted test date: {}", date);
+        tracing::info!("Extracted test date: {} (from: {}, reasoning: {})", date, source, reasoning);
         Some(date.to_string())
     }
 }
