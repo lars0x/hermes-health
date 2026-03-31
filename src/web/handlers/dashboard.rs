@@ -34,6 +34,7 @@ pub async fn dashboard(
             .unwrap_or(("stable".to_string(), 0.0, "insufficient_data".to_string()));
 
         attention_items.push(minijinja::context! {
+            id => bm.id,
             name => bm.name,
             loinc_code => bm.loinc_code,
             value => value,

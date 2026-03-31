@@ -25,6 +25,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         // HTML pages
         .route("/", get(handlers::dashboard::dashboard))
+        .route("/biomarkers", get(handlers::biomarker::biomarkers_list))
         .route("/biomarkers/{id}", get(handlers::biomarker::biomarker_detail))
         .route("/entry", get(handlers::observation::data_entry_page))
         .route("/import", get(handlers::report::import_page))

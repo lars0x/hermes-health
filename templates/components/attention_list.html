@@ -2,7 +2,7 @@
   <div class="card-title">Attention needed</div>
   {% if attention_items %}
     {% for item in attention_items %}
-    <a href="/biomarkers/{{ item.id|default(0) }}" class="attention-item" style="text-decoration:none;color:inherit;">
+    <a href="/biomarkers/{{ item.id }}" class="attention-item" style="text-decoration:none;color:inherit;">
       <div class="status-dot {% if item.range_status == 'out_of_reference' %}bg-red{% else %}bg-amber{% endif %}"></div>
       <div class="attention-content">
         <div class="attention-header">

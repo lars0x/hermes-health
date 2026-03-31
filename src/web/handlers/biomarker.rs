@@ -8,6 +8,53 @@ use crate::services::{biomarker, observation, trend};
 use crate::web::htmx;
 use crate::web::AppState;
 
+pub async fn biomarkers_list(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let is_htmx = htmx::is_htmx_request(&headers);
+    let biomarkers = biomarker::list_biomarkers(&state.pool, None).await?;
+    let latest_obs =
+        crate::db::queries::get_latest_observation_per_biomarker(&state.pool).await?;
+
+    // Group biomarkers by category
+    let mut categories: Vec<String> = Vec::new();
+    let mut grouped: std::collections::BTreeMap<String, Vec<minijinja::Value>> = std::collections::BTreeMap::new();
+
+    for bm in &biomarkers {
+        let latest = latest_obs.iter().find(|o| o.biomarker_id == bm.id);
+        let status = latest
+            .map(|o| crate::services::biomarker::range_status(o.value, bm))
+            .unwrap_or("no_data".to_string());
+        let row = minijinja::context! {
+            id => bm.id,
+            name => bm.name,
+            loinc_code => bm.loinc_code,
+            unit => bm.unit,
+            latest_value => latest.map(|o| o.value),
+            latest_date => latest.map(|o| o.observed_at.clone()),
+            status => status,
+            reference_low => bm.reference_low,
+            reference_high => bm.reference_high,
+            optimal_low => bm.optimal_low,
+            optimal_high => bm.optimal_high,
+        };
+        grouped.entry(bm.category.clone()).or_default().push(row);
+    }
+
+    let category_groups: Vec<minijinja::Value> = grouped
+        .into_iter()
+        .map(|(cat, markers)| minijinja::context! { category => cat, markers => markers })
+        .collect();
+
+    let ctx = minijinja::context! {
+        is_fragment => is_htmx,
+        current_path => "/biomarkers",
+        groups => category_groups,
+    };
+    state.templates.render("pages/biomarkers_list.html", ctx).map(Html)
+}
+
 #[derive(Deserialize)]
 pub struct ChartQuery {
     pub range: Option<String>,

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Biomarkers - Hermes Health{% endblock %}
+{% block content %}
+<div style="max-width: 900px;">
+  <h1 style="font-size: 18px; font-weight: 500; margin-bottom: 16px;">Biomarkers</h1>
+
+  {% for group in groups %}
+  <div class="card" style="margin-bottom: 12px;">
+    <div class="card-title">{{ group.category }}</div>
+    <table class="obs-table">
+      <thead>
+        <tr>
+          <th>Marker</th>
+          <th>Latest</th>
+          <th>Reference</th>
+          <th>Optimal</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bm in group.markers %}
+        <tr style="cursor: pointer;" onclick="window.location='/biomarkers/{{ bm.id }}'">
+          <td>
+            <div style="font-weight: 500;">{{ bm.name }}</div>
+            <div style="font-size: 11px; color: var(--text-secondary); font-family: var(--mono);">{{ bm.loinc_code }}</div>
+          </td>
+          <td>
+            {% if bm.latest_value %}
+              <span class="{% if bm.status == 'out_of_reference' %}text-red{% elif bm.status == 'suboptimal' %}text-amber{% elif bm.status == 'in_range' %}text-green{% endif %}">
+                {{ bm.latest_value }} {{ bm.unit }}
+              </span>
+              <div style="font-size: 11px; color: var(--text-secondary);">{{ bm.latest_date }}</div>
+            {% else %}
+              <span class="text-secondary" style="font-size: 12px;">-</span>
+            {% endif %}
+          </td>
+          <td style="font-size: 12px; color: var(--text-secondary);">
+            {{ bm.reference_low|default("-") }} - {{ bm.reference_high|default("-") }}
+          </td>
+          <td style="font-size: 12px; color: var(--text-secondary);">
+            {{ bm.optimal_low|default("-") }} - {{ bm.optimal_high|default("-") }}
+          </td>
+          <td>
+            {% if bm.status == "out_of_reference" %}
+              <span class="pill pill-medication">out of range</span>
+            {% elif bm.status == "suboptimal" %}
+              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark);">suboptimal</span>
+            {% elif bm.status == "in_range" %}
+              <span class="pill pill-exercise">optimal</span>
+            {% elif bm.status == "no_data" %}
+              <span class="pill pill-other">no data</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
