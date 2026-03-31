@@ -4,7 +4,7 @@
 <div style="max-width: 800px;">
 
   <!-- Tabs -->
-  <div style="display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border);">
+  <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('manual', this)">Manual Entry</button>
     <button class="tab-btn" onclick="switchTab('import', this)">Import Report</button>
   </div>
@@ -114,6 +114,14 @@ function switchTab(tab, btn) {
   document.getElementById('tab-import').style.display = tab === 'import' ? '' : 'none';
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
+  history.replaceState(null, '', '/entry#' + tab);
 }
+(function() {
+  var hash = window.location.hash.replace('#', '');
+  if (hash === 'import') {
+    var btn = document.querySelectorAll('.tab-btn')[1];
+    switchTab('import', btn);
+  }
+})();
 </script>
 {% endblock %}
