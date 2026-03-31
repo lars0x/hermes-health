@@ -47,6 +47,8 @@
               <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark);">suboptimal</span>
             {% elif bm.status == "in_range" %}
               <span class="pill pill-exercise">optimal</span>
+            {% elif bm.status == "no_range" %}
+              <span class="pill pill-other">no ranges set</span>
             {% elif bm.status == "no_data" %}
               <span class="pill pill-other">no data</span>
             {% endif %}

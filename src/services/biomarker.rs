@@ -92,7 +92,7 @@ pub async fn get_out_of_range(pool: &SqlitePool) -> Result<Vec<(Biomarker, f64, 
     for bm in &biomarkers {
         if let Some(obs) = latest_obs.iter().find(|o| o.biomarker_id == bm.id) {
             let status = range_status(obs.value, bm);
-            if status != "in_range" {
+            if status != "in_range" && status != "no_range" {
                 out_of_range.push((bm.clone(), obs.value, status));
             }
         }
@@ -103,6 +103,15 @@ pub async fn get_out_of_range(pool: &SqlitePool) -> Result<Vec<(Biomarker, f64, 
 
 /// Determine the range status of a value for a biomarker
 pub fn range_status(value: f64, bm: &Biomarker) -> String {
+    // If no ranges are defined at all, we can't assess
+    let has_any_range = bm.reference_low.is_some()
+        || bm.reference_high.is_some()
+        || bm.optimal_low.is_some()
+        || bm.optimal_high.is_some();
+    if !has_any_range {
+        return "no_range".to_string();
+    }
+
     // Check reference range first
     if let (Some(low), Some(high)) = (bm.reference_low, bm.reference_high) {
         if value < low || value > high {
