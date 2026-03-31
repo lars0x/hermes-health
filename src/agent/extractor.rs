@@ -365,7 +365,7 @@ async fn llm_extract_test_date(
     let text = if raw_text.len() > 2000 { &raw_text[..2000] } else { raw_text };
 
     let prompt = format!(
-        "/nothink\nWhat date was the blood test or specimen collected? Look at all dates on this lab report and determine which one represents when the sample was taken from the patient. Ignore report printing or publishing dates. If multiple dates exist, pick the one closest to when the specimen was collected.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\", \"source_field\": \"the field name you found it in\", \"reasoning\": \"brief explanation of why you chose this date\"}} or {{\"test_date\": null, \"source_field\": null, \"reasoning\": \"why no date was found\"}} if not found.\n\n{}",
+        "/nothink\nWhat date was the blood test or specimen collected? Look at all dates on this lab report and determine which one represents when the sample was taken from the patient.\nPriority: Date Collected > Specimen Date > Date Received (acceptable proxy - specimen is typically collected the same day it is received) > any other date that is NOT a report/print date.\nYou MUST return a date if any reasonable candidate exists. Only return null if there are truly no dates on the report at all.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\", \"source_field\": \"the field name you found it in\", \"reasoning\": \"brief explanation of why you chose this date\"}}.\n\n{}",
         text
     );
 
