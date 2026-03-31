@@ -1,0 +1,33 @@
+[package]
+name = "hermes-health"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hermes"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2 = "0.10"
+thiserror = "2"
+strsim = "0.11"
+toml = "0.8"
+csv = "1.3"
+rust-embed = { version = "8", features = ["include-exclude"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "fs"] }
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1.0.102"
+minijinja = { version = "2", features = ["loader"] }
+mime_guess = "2.0.5"
+
+[dev-dependencies]
+tempfile = "3"

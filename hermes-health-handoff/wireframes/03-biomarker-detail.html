@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes Health — Biomarker Detail</title>
+<style>
+  :root {
+    --bg-primary: #ffffff; --bg-secondary: #f5f5f3; --text-primary: #1a1a1a;
+    --text-secondary: #6b6b6b; --border: #e0e0e0; --blue: #378ADD;
+    --green: #1D9E75; --green-bg: #E1F5EE; --red: #E24B4A;
+    --amber: #EF9F27; --amber-dark: #854F0B; --amber-bg: #FAEEDA;
+    --info-bg: #E6F1FB; --info-text: #185FA5; --purple: #534AB7;
+    --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  body { font-family: var(--font); color: var(--text-primary); background: var(--bg-secondary); margin: 0; padding: 24px; }
+  .note { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; padding: 8px 12px; background: var(--amber-bg); border-radius: var(--radius); }
+</style>
+</head>
+<body>
+<div class="note">WIREFRAME — Biomarker Detail (Desktop). HDL-C example with trend chart, stats, alert, observation history. See SPEC.md §5.1 + §6.3 view #2.</div>
+
+<div style="background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1.25rem;">
+
+  <!-- Nav -->
+  <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 0.5px solid var(--border);">
+    <span style="font-weight: 500; font-size: 15px; color: var(--info-text);">Hermes Health</span>
+    <div style="flex: 1;"></div>
+    <span style="font-size: 13px; color: var(--text-secondary);">Dashboard</span>
+    <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Biomarkers</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">Import</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">Interventions</span>
+  </div>
+
+  <!-- Header -->
+  <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px;">
+    <span style="font-size: 18px; font-weight: 500;">HDL-C</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">LOINC 2085-9 · Lipid panel</span>
+  </div>
+  <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px;">
+    <span style="font-size: 28px; font-weight: 500; color: var(--red);">42</span>
+    <span style="font-size: 14px; color: var(--text-secondary);">mg/dL</span>
+    <span style="font-size: 13px; color: var(--red);">&#9660; worsening</span>
+  </div>
+
+  <!-- Chart area -->
+  <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 16px; border: 0.5px solid var(--border); margin-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <span style="font-size: 13px; font-weight: 500;">Trend — 12 months</span>
+      <div style="display: flex; gap: 8px;">
+        <span style="font-size: 11px; padding: 2px 8px; border-radius: var(--radius); border: 0.5px solid var(--border); color: var(--text-secondary);">6m</span>
+        <span style="font-size: 11px; padding: 2px 8px; border-radius: var(--radius); background: var(--info-bg); color: var(--info-text);">12m</span>
+        <span style="font-size: 11px; padding: 2px 8px; border-radius: var(--radius); border: 0.5px solid var(--border); color: var(--text-secondary);">all</span>
+      </div>
+    </div>
+    <svg viewBox="0 0 600 200" style="width: 100%; height: auto;">
+      <!-- Reference/optimal bands -->
+      <rect x="0" y="20" width="600" height="60" fill="#FCEBEB" opacity="0.3"/>
+      <rect x="0" y="80" width="600" height="60" fill="#E1F5EE" opacity="0.3"/>
+      <rect x="0" y="140" width="600" height="40" fill="#FCEBEB" opacity="0.3"/>
+      <!-- Range lines -->
+      <line x1="0" y1="80" x2="600" y2="80" stroke="#1D9E75" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.6"/>
+      <line x1="0" y1="140" x2="600" y2="140" stroke="#1D9E75" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.6"/>
+      <line x1="0" y1="20" x2="600" y2="20" stroke="#E24B4A" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.6"/>
+      <line x1="0" y1="180" x2="600" y2="180" stroke="#E24B4A" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.4"/>
+      <!-- Labels -->
+      <text x="604" y="84" fill="#6b6b6b" font-size="9" font-family="sans-serif">60 optimal</text>
+      <text x="604" y="144" fill="#6b6b6b" font-size="9" font-family="sans-serif">40 optimal</text>
+      <text x="604" y="24" fill="#6b6b6b" font-size="9" font-family="sans-serif">80 ref hi</text>
+      <text x="604" y="184" fill="#6b6b6b" font-size="9" font-family="sans-serif">35 ref lo</text>
+      <!-- Data line -->
+      <polyline points="30,95 100,90 180,100 260,110 340,115 420,125 500,130 570,135" fill="none" stroke="#378ADD" stroke-width="2"/>
+      <circle cx="30" cy="95" r="4" fill="#378ADD"/><circle cx="100" cy="90" r="4" fill="#378ADD"/>
+      <circle cx="180" cy="100" r="4" fill="#378ADD"/><circle cx="260" cy="110" r="4" fill="#378ADD"/>
+      <circle cx="340" cy="115" r="4" fill="#378ADD"/><circle cx="420" cy="125" r="4" fill="#378ADD"/>
+      <circle cx="500" cy="130" r="4" fill="#378ADD"/>
+      <circle cx="570" cy="135" r="4" fill="#E24B4A" stroke="#E24B4A" stroke-width="2"/>
+      <!-- Regression line -->
+      <line x1="30" y1="95" x2="570" y2="135" stroke="#E24B4A" stroke-width="1" stroke-dasharray="6,4" opacity="0.5"/>
+      <!-- Intervention marker -->
+      <line x1="220" y1="0" x2="220" y2="200" stroke="#534AB7" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>
+      <text x="224" y="12" fill="#534AB7" font-size="9" font-family="sans-serif">Tennis started</text>
+      <!-- X-axis -->
+      <text x="30" y="198" fill="#6b6b6b" font-size="9" font-family="sans-serif">Apr</text>
+      <text x="130" y="198" fill="#6b6b6b" font-size="9" font-family="sans-serif">Jun</text>
+      <text x="230" y="198" fill="#6b6b6b" font-size="9" font-family="sans-serif">Aug</text>
+      <text x="330" y="198" fill="#6b6b6b" font-size="9" font-family="sans-serif">Oct</text>
+      <text x="430" y="198" fill="#6b6b6b" font-size="9" font-family="sans-serif">Dec</text>
+      <text x="530" y="198" fill="#6b6b6b" font-size="9" font-family="sans-serif">Feb</text>
+    </svg>
+    <div style="display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--text-secondary);">
+      <span><span style="display: inline-block; width: 8px; height: 2px; background: var(--red); margin-right: 4px; vertical-align: middle;"></span>Regression</span>
+      <span><span style="display: inline-block; width: 8px; height: 8px; background: var(--green-bg); border: 0.5px solid var(--green); margin-right: 4px; vertical-align: middle;"></span>Optimal range</span>
+      <span><span style="display: inline-block; width: 8px; height: 2px; background: var(--red); opacity: 0.4; margin-right: 4px; vertical-align: middle;"></span>Reference range</span>
+      <span><span style="display: inline-block; width: 8px; height: 2px; background: var(--purple); margin-right: 4px; vertical-align: middle;"></span>Intervention</span>
+    </div>
+  </div>
+
+  <!-- Trend stats -->
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;">
+    <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 10px 12px; border: 0.5px solid var(--border);">
+      <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 2px;">Direction</p>
+      <p style="font-size: 14px; font-weight: 500; margin: 0; color: var(--red);">&#9660; Decreasing</p>
+    </div>
+    <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 10px 12px; border: 0.5px solid var(--border);">
+      <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 2px;">Slope</p>
+      <p style="font-size: 14px; font-weight: 500; margin: 0;">-4.2 mg/dL/yr</p>
+    </div>
+    <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 10px 12px; border: 0.5px solid var(--border);">
+      <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 2px;">R²</p>
+      <p style="font-size: 14px; font-weight: 500; margin: 0;">0.91</p>
+    </div>
+    <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 10px 12px; border: 0.5px solid var(--border);">
+      <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 2px;">Rate of change</p>
+      <p style="font-size: 14px; font-weight: 500; margin: 0; color: var(--red);">-8.2%/yr</p>
+    </div>
+  </div>
+
+  <!-- Alert -->
+  <div style="background: var(--bg-primary); border-radius: 0; padding: 12px 14px; border: 0.5px solid var(--border); border-left: 3px solid var(--amber); margin-bottom: 12px;">
+    <span style="font-size: 13px; font-weight: 500; color: var(--amber-dark);">Alert: approaching limit</span>
+    <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0;">At current rate, projected to cross reference low (35 mg/dL) within ~5 months.</p>
+  </div>
+
+  <!-- Observation history -->
+  <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 14px; border: 0.5px solid var(--border);">
+    <p style="font-weight: 500; font-size: 13px; margin: 0 0 10px;">Observation history</p>
+    <div style="font-size: 12px;">
+      <div style="display: grid; grid-template-columns: 90px 70px 60px 1fr; gap: 4px; padding: 6px 0; border-bottom: 0.5px solid var(--border); color: var(--text-secondary); font-weight: 500;">
+        <span>Date</span><span>Value</span><span>Flag</span><span>Notes</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 90px 70px 60px 1fr; gap: 4px; padding: 6px 0; border-bottom: 0.5px solid var(--border);">
+        <span>2026-03-13</span><span style="color: var(--red);">42 mg/dL</span><span style="color: var(--red);">L</span><span style="color: var(--text-secondary);">fasted, post 5-day fast</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 90px 70px 60px 1fr; gap: 4px; padding: 6px 0; border-bottom: 0.5px solid var(--border);">
+        <span>2026-01-08</span><span>45 mg/dL</span><span style="color: var(--red);">L</span><span style="color: var(--text-secondary);">fasted</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 90px 70px 60px 1fr; gap: 4px; padding: 6px 0; border-bottom: 0.5px solid var(--border);">
+        <span>2025-11-20</span><span>47 mg/dL</span><span style="color: var(--red);">L</span><span style="color: var(--text-secondary);">fasted</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 90px 70px 60px 1fr; gap: 4px; padding: 6px 0;">
+        <span>2025-09-15</span><span>49 mg/dL</span><span style="color: var(--amber);">L</span><span style="color: var(--text-secondary);">fasted, Parkway Lab</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text-secondary);">
+    <span>Reference: 35–80 mg/dL</span><span>·</span><span>Optimal: 40–60 mg/dL</span><span>·</span><span>Canonical: mg/dL</span>
+  </div>
+</div>
+</body>
+</html>

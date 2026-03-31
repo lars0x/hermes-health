@@ -1,0 +1,19 @@
+<div class="card">
+  <div class="card-title">Recent improvements</div>
+  {% if improvements %}
+    {% for item in improvements %}
+    <div class="improvement-item">
+      <div class="improvement-header">
+        <span class="name">{{ item.name }}</span>
+        <span class="val text-green">{{ item.value }} {{ item.unit }}</span>
+      </div>
+      <div class="improvement-trend">
+        {% if item.direction == "decreasing" %}&#9660;{% else %}&#9650;{% endif %}
+        improving &middot; {{ "%.1f"|format(item.rate) }}%/yr
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div style="font-size: 13px; color: var(--text-secondary); padding: 4px 0;">No improving markers yet</div>
+  {% endif %}
+</div>

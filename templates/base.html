@@ -1,0 +1,25 @@
+{% if not is_fragment %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Hermes Health{% endblock %}</title>
+  <link rel="stylesheet" href="/static/uplot.min.css">
+  <link rel="stylesheet" href="/static/hermes.css">
+</head>
+<body>
+<div class="app-shell">
+  {% include "components/nav.html" %}
+{% endif %}
+
+  {% block content %}{% endblock %}
+
+{% if not is_fragment %}
+</div>
+<script src="/static/htmx.min.js"></script>
+<script src="/static/uplot.iife.min.js"></script>
+<script src="/static/hermes.js"></script>
+</body>
+</html>
+{% endif %}

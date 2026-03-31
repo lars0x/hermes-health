@@ -1,0 +1,18 @@
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="label">Tracked markers</div>
+    <div class="value">{{ summary.total_tracked }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">In optimal range</div>
+    <div class="value text-green">{{ summary.in_optimal }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">Out of range</div>
+    <div class="value text-red">{{ summary.out_of_range + summary.suboptimal }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">Days since last lab</div>
+    <div class="value">{% if summary.days_since_last_lab >= 0 %}{{ summary.days_since_last_lab }}{% else %}-{% endif %}</div>
+  </div>
+</div>

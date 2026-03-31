@@ -1,0 +1,30 @@
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[database]
+path = "data/hermes.db"
+
+[ollama]
+url = "http://100.95.56.105:11434"
+model = "qwen3.5:27b-64k"
+temperature = 0.0
+timeout_seconds = 300
+
+[extraction]
+mode = "agentic"
+max_agent_turns = 20
+validation_strictness = "warn"
+
+# [user]
+# date_of_birth = "1985-01-01"
+# sex = "male"
+
+[display]
+date_format = "%Y-%m-%d"
+default_trend_window_days = 365
+
+[trends]
+min_data_points = 3
+rapid_change_threshold_pct = 20.0
+projection_horizon_days = 180

@@ -1,0 +1,63 @@
+<div class="card" style="margin-bottom: 12px;">
+  <div class="chart-controls">
+    <button class="chart-range-btn {% if range == '6m' or window == 180 %}active{% endif %}"
+            hx-get="/api/v1/biomarkers/{{ biomarker.id }}/chart?range=6m"
+            hx-target="#chart-section"
+            hx-swap="innerHTML">6m</button>
+    <button class="chart-range-btn {% if range == '12m' or (not range and window == 365) %}active{% endif %}"
+            hx-get="/api/v1/biomarkers/{{ biomarker.id }}/chart?range=12m"
+            hx-target="#chart-section"
+            hx-swap="innerHTML">12m</button>
+    <button class="chart-range-btn {% if range == 'all' or window == 3650 %}active{% endif %}"
+            hx-get="/api/v1/biomarkers/{{ biomarker.id }}/chart?range=all"
+            hx-target="#chart-section"
+            hx-swap="innerHTML">all</button>
+  </div>
+  <div class="chart-container"
+       id="biomarker-chart"
+       data-chart='{{ chart_data_json }}'
+       data-regression='{{ regression_json }}'
+       data-interventions='{{ intervention_json }}'
+       data-unit="{{ biomarker.unit }}">
+  </div>
+  <div class="chart-legend">
+    <div class="chart-legend-item"><div class="legend-line" style="background: var(--blue);"></div> Data</div>
+    <div class="chart-legend-item"><div class="legend-line" style="background: var(--red); border-style: dashed;"></div> Regression</div>
+    <div class="chart-legend-item"><div class="legend-box" style="background: var(--green-bg);"></div> Optimal</div>
+    <div class="chart-legend-item"><div class="legend-box" style="background: #FCEBEB;"></div> Reference</div>
+    <div class="chart-legend-item"><div class="legend-line" style="background: var(--purple); border-style: dashed;"></div> Intervention</div>
+  </div>
+</div>
+
+{% if trend %}
+<div class="trend-grid">
+  <div class="trend-stat card">
+    <div class="label">Direction</div>
+    <div class="value {% if trend.status == 'worsening' %}text-red{% elif trend.status == 'improving' %}text-green{% endif %}">
+      {% if trend.direction == "increasing" %}&#9650;{% elif trend.direction == "decreasing" %}&#9660;{% else %}&#9654;{% endif %}
+      {{ trend.direction|capitalize }}
+    </div>
+  </div>
+  <div class="trend-stat card">
+    <div class="label">Slope</div>
+    <div class="value">{{ "%.2f"|format(trend.slope) }} {{ trend.slope_unit }}</div>
+  </div>
+  <div class="trend-stat card">
+    <div class="label">R-squared</div>
+    <div class="value">{{ "%.3f"|format(trend.r_squared) }}</div>
+  </div>
+  <div class="trend-stat card">
+    <div class="label">Rate of change</div>
+    <div class="value {% if trend.status == 'worsening' %}text-red{% elif trend.status == 'improving' %}text-green{% endif %}">
+      {{ "%.1f"|format(trend.annualized_rate_pct) }}%/yr
+    </div>
+  </div>
+</div>
+
+{% for alert in trend.alerts %}
+<div class="alert-banner">
+  <div class="alert-title">Alert: {{ alert.alert_type|replace("_", " ") }}</div>
+  <div class="alert-text">{{ alert.message }}</div>
+</div>
+{% endfor %}
+{% endif %}

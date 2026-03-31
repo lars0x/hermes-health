@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Hermes Health{% endblock %}
+{% block content %}
+  {% include "components/summary_cards.html" %}
+  <div class="dashboard-grid">
+    {% include "components/attention_list.html" %}
+    <div class="sidebar-stack">
+      {% include "components/interventions_sidebar.html" %}
+      {% include "components/improvements.html" %}
+    </div>
+  </div>
+{% endblock %}

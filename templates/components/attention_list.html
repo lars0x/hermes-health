@@ -1,0 +1,26 @@
+<div class="card">
+  <div class="card-title">Attention needed</div>
+  {% if attention_items %}
+    {% for item in attention_items %}
+    <a href="/biomarkers/{{ item.id|default(0) }}" class="attention-item" style="text-decoration:none;color:inherit;">
+      <div class="status-dot {% if item.range_status == 'out_of_reference' %}bg-red{% else %}bg-amber{% endif %}"></div>
+      <div class="attention-content">
+        <div class="attention-header">
+          <span class="name">{{ item.name }}</span>
+          <span class="loinc">{{ item.loinc_code }}</span>
+        </div>
+        <div class="attention-values">
+          <span class="val {% if item.range_status == 'out_of_reference' %}text-red{% else %}text-amber{% endif %}">{{ item.value }} {{ item.unit }}</span>
+          <span class="trend">
+            {% if item.direction == "increasing" %}&#9650;{% elif item.direction == "decreasing" %}&#9660;{% else %}&#9654;{% endif %}
+            {{ item.status }}
+            {% if item.rate != 0 %} &middot; {{ "%.1f"|format(item.rate) }}%/yr{% endif %}
+          </span>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;">All markers in range</div>
+  {% endif %}
+</div>

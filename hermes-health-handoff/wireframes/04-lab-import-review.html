@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes Health — Lab Import Review</title>
+<style>
+  :root {
+    --bg-primary: #ffffff; --bg-secondary: #f5f5f3; --text-primary: #1a1a1a;
+    --text-secondary: #6b6b6b; --border: #e0e0e0; --green: #1D9E75;
+    --green-bg: #E1F5EE; --red: #E24B4A; --amber: #EF9F27;
+    --amber-dark: #854F0B; --amber-text: #BA7517; --amber-bg: #FAEEDA;
+    --info-bg: #E6F1FB; --info-text: #185FA5;
+    --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'SF Mono', 'Fira Code', monospace;
+  }
+  body { font-family: var(--font); color: var(--text-primary); background: var(--bg-secondary); margin: 0; padding: 24px; }
+  .note { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; padding: 8px 12px; background: var(--amber-bg); border-radius: var(--radius); }
+  .row { display: grid; grid-template-columns: 24px 140px 80px 65px 65px 90px 80px 60px; gap: 6px; padding: 8px 4px; border-bottom: 0.5px solid var(--border); align-items: center; font-size: 12px; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: var(--radius); display: inline-block; }
+  .badge-ok { background: var(--green-bg); color: #0F6E56; }
+  .badge-warn { background: var(--amber-bg); color: var(--amber-dark); }
+</style>
+</head>
+<body>
+<div class="note">WIREFRAME — Lab Import Review (Desktop, post-extraction). Shows human-in-the-loop review of Rig agent extraction. See SPEC.md §4.3 + §4.4 + §6.3 view #3.</div>
+
+<div style="background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1.25rem;">
+
+  <!-- Nav -->
+  <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 0.5px solid var(--border);">
+    <span style="font-weight: 500; font-size: 15px; color: var(--info-text);">Hermes Health</span>
+    <div style="flex: 1;"></div>
+    <span style="font-size: 13px; color: var(--text-secondary);">Dashboard</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">Biomarkers</span>
+    <span style="font-size: 13px; font-weight: 500;">Import</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">Interventions</span>
+  </div>
+
+  <!-- Upload status -->
+  <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 14px; border: 0.5px solid var(--border); margin-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <div>
+        <span style="font-size: 14px; font-weight: 500;">Parkway_Lab_Report_2026-03-13.pdf</span>
+        <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;">uploaded 2 min ago</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--green);"></div>
+        <span style="font-size: 12px; color: var(--green);">Extraction complete</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary);">
+      <span>Model: qwen3.5:27b</span>
+      <span>· 14 markers extracted</span>
+      <span>· 12 matched</span>
+      <span>· 2 unresolved</span>
+      <span>· 3 agent turns</span>
+    </div>
+  </div>
+
+  <!-- Review table -->
+  <div style="background: var(--bg-primary); border-radius: var(--radius); padding: 14px; border: 0.5px solid var(--border); margin-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <span style="font-size: 14px; font-weight: 500;">Review extracted results</span>
+      <div style="display: flex; gap: 8px;">
+        <button style="font-size: 12px; padding: 4px 12px; background: transparent; border: 0.5px solid var(--border); border-radius: var(--radius); cursor: pointer;">Accept all matched</button>
+        <button style="font-size: 12px; padding: 4px 12px; background: var(--info-bg); color: var(--info-text); border: none; border-radius: var(--radius); cursor: pointer;">Commit selected</button>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="row" style="color: var(--text-secondary); font-weight: 500; font-size: 12px;">
+      <span></span><span>Marker</span><span>Value</span><span>Unit</span><span>Flag</span><span>LOINC match</span><span>Confidence</span><span>Action</span>
+    </div>
+
+    <!-- Matched rows -->
+    <div class="row">
+      <input type="checkbox" checked style="width: 14px; height: 14px; margin: 0;">
+      <span>Total Cholesterol</span><span>178</span><span>mg/dL</span>
+      <span style="color: var(--text-secondary);">—</span>
+      <span style="font-family: var(--mono); font-size: 11px;">2093-3</span>
+      <span><span class="badge badge-ok">1.00 exact</span></span>
+      <span style="color: var(--text-secondary); font-size: 11px;">accept</span>
+    </div>
+    <div class="row">
+      <input type="checkbox" checked style="width: 14px; height: 14px; margin: 0;">
+      <span>HDL-C</span><span style="color: var(--red);">42</span><span>mg/dL</span>
+      <span style="color: var(--red);">L</span>
+      <span style="font-family: var(--mono); font-size: 11px;">2085-9</span>
+      <span><span class="badge badge-ok">1.00 exact</span></span>
+      <span style="color: var(--text-secondary); font-size: 11px;">accept</span>
+    </div>
+    <div class="row">
+      <input type="checkbox" checked style="width: 14px; height: 14px; margin: 0;">
+      <span>Triglycerides</span><span style="color: var(--amber-text);">165</span><span>mg/dL</span>
+      <span style="color: var(--amber-text);">H</span>
+      <span style="font-family: var(--mono); font-size: 11px;">2571-8</span>
+      <span><span class="badge badge-ok">0.97 alias</span></span>
+      <span style="color: var(--text-secondary); font-size: 11px;">accept</span>
+    </div>
+    <div class="row">
+      <input type="checkbox" checked style="width: 14px; height: 14px; margin: 0;">
+      <span>Glucose, Fasting</span><span>5.1</span><span style="color: var(--info-text);">mmol/L</span>
+      <span style="color: var(--text-secondary);">—</span>
+      <span style="font-family: var(--mono); font-size: 11px;">2345-7</span>
+      <span><span class="badge badge-ok">0.92 fuzzy</span></span>
+      <span style="color: var(--info-text); font-size: 11px;">→92 mg/dL</span>
+    </div>
+    <div class="row">
+      <input type="checkbox" checked style="width: 14px; height: 14px; margin: 0;">
+      <span>HbA1c</span><span>33</span><span style="color: var(--info-text);">mmol/mol</span>
+      <span style="color: var(--text-secondary);">—</span>
+      <span style="font-family: var(--mono); font-size: 11px;">4548-4</span>
+      <span><span class="badge badge-ok">1.00 exact</span></span>
+      <span style="color: var(--info-text); font-size: 11px;">→5.2%</span>
+    </div>
+
+    <!-- Unresolved rows -->
+    <div class="row" style="background: rgba(250,238,218,0.15);">
+      <input type="checkbox" style="width: 14px; height: 14px; margin: 0;">
+      <span style="color: var(--amber-dark);">Apo-Lipoprotein B</span><span>95</span><span>mg/dL</span>
+      <span style="color: var(--text-secondary);">—</span>
+      <span style="font-family: var(--mono); font-size: 11px; color: var(--amber-dark);">?</span>
+      <span><span class="badge badge-warn">0.78 low</span></span>
+      <span style="color: var(--amber-dark); font-size: 11px; cursor: pointer; text-decoration: underline;">map</span>
+    </div>
+    <div class="row" style="background: rgba(250,238,218,0.15); border-bottom: none;">
+      <input type="checkbox" style="width: 14px; height: 14px; margin: 0;">
+      <span style="color: var(--amber-dark);">HS-CRP (Cardiac)</span><span>0.8</span><span>mg/L</span>
+      <span style="color: var(--text-secondary);">—</span>
+      <span style="font-family: var(--mono); font-size: 11px; color: var(--amber-dark);">?</span>
+      <span><span class="badge badge-warn">0.72 low</span></span>
+      <span style="color: var(--amber-dark); font-size: 11px; cursor: pointer; text-decoration: underline;">map</span>
+    </div>
+  </div>
+
+  <!-- Callout -->
+  <div style="background: var(--bg-primary); padding: 14px; border: 0.5px solid var(--border); border-left: 3px solid var(--amber-text);">
+    <p style="font-size: 13px; font-weight: 500; color: var(--amber-dark); margin: 0 0 6px;">2 markers need manual LOINC mapping</p>
+    <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Click "map" to search the LOINC catalog. Mappings are saved as aliases for future imports from this lab.</p>
+  </div>
+
+</div>
+</body>
+</html>

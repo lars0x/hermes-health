@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ biomarker.name }} - Hermes Health{% endblock %}
+{% block content %}
+<div class="biomarker-header">
+  <h1>{{ biomarker.name }}</h1>
+  <div class="meta">{{ biomarker.loinc_code }} &middot; {{ biomarker.category }}</div>
+  {% if latest_value %}
+  <div class="current-value {% if latest_status == 'out_of_reference' %}text-red{% elif latest_status == 'suboptimal' %}text-amber{% else %}text-green{% endif %}">
+    {{ latest_value }}
+    <span class="unit">{{ biomarker.unit }}</span>
+  </div>
+  {% if trend %}
+  <div style="font-size: 13px;" class="{% if trend.status == 'worsening' %}text-red{% elif trend.status == 'improving' %}text-green{% else %}text-secondary{% endif %}">
+    {% if trend.direction == "increasing" %}&#9650;{% elif trend.direction == "decreasing" %}&#9660;{% else %}&#9654;{% endif %}
+    {{ trend.status }}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div id="chart-section">
+  {% include "components/chart.html" %}
+</div>
+
+<div class="card" style="margin-top: 12px;">
+  <div class="card-title">Observation history</div>
+  {% if observations %}
+  <table class="obs-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Value</th>
+        <th>Original</th>
+        <th>Flag</th>
+        <th>Lab</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for obs in observations|reverse %}
+      <tr>
+        <td>{{ obs.observed_at }}</td>
+        <td>
+          {% set prec = obs.precision %}
+          {% if prec == 0 %}{{ "%.0f"|format(obs.value) }}{% elif prec == 1 %}{{ "%.1f"|format(obs.value) }}{% elif prec == 2 %}{{ "%.2f"|format(obs.value) }}{% else %}{{ obs.value }}{% endif %}
+          {{ biomarker.unit }}
+        </td>
+        <td class="text-secondary" style="font-size: 11px;">
+          {% if obs.original_unit != biomarker.unit %}{{ obs.original_value }} {{ obs.original_unit }}{% endif %}
+        </td>
+        <td>
+          {% if obs.detection_limit %}<span class="text-amber">{{ obs.detection_limit }}</span>{% endif %}
+          {% if biomarker.reference_high and obs.value > biomarker.reference_high %}<span class="flag-H">H</span>{% endif %}
+          {% if biomarker.reference_low and obs.value < biomarker.reference_low %}<span class="flag-L">L</span>{% endif %}
+        </td>
+        <td class="text-secondary">{{ obs.lab_name|default("") }}</td>
+        <td class="notes">{{ obs.notes|default("") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;">No observations yet</div>
+  {% endif %}
+</div>
+
+<div class="range-info">
+  Reference: {{ biomarker.reference_low|default("-") }}-{{ biomarker.reference_high|default("-") }} {{ biomarker.unit }}
+  &middot; Optimal: {{ biomarker.optimal_low|default("-") }}-{{ biomarker.optimal_high|default("-") }} {{ biomarker.unit }}
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+/target
+data/hermes.db
+data/hermes.db-journal
+data/hermes.db-wal
+data/hermes.db-shm
+data/reports/*
+!data/reports/.gitkeep
+.env
+*.swp
+*.swo
+.DS_Store
+LOINC 2.81/

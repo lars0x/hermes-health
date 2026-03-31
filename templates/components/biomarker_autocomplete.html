@@ -1,0 +1,11 @@
+{% if results %}
+<div class="autocomplete-dropdown">
+  {% for r in results %}
+  <div class="autocomplete-item"
+       onclick="selectBiomarker('{{ r.loinc_code }}', '{{ r.name }}', '{{ r.unit }}')">
+    <div class="ac-name">{{ r.name }}</div>
+    <div class="ac-meta">{{ r.loinc_code }} &middot; {{ r.category }} &middot; {{ r.unit }}{% if not r.tracked %} &middot; <em>not yet tracked</em>{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
