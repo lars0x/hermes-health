@@ -200,7 +200,7 @@ async fn llm_resolve_markers(
     let unresolved_names: Vec<&str> = unresolved.iter().map(|u| u.marker_name.as_str()).collect();
 
     let prompt = format!(
-        "/nothink\nI have these biomarker names from a lab report that I could not automatically match:\n{}\n\nHere are the known biomarkers in my system:\n{}\n\nFor each unresolved name, tell me which known biomarker it maps to (if any). Return JSON:\n{{\"mappings\": [{{\"from\": \"lab report name\", \"to_loinc\": \"LOINC code or null if no match\"}}]}}",
+        "/nothink\nI have these biomarker names from a lab report that I could not automatically match:\n{}\n\nHere are the known biomarkers in my system:\n{}\n\nFor each unresolved name, tell me which known biomarker it maps to (if any). Rate your confidence from 0.0 to 1.0 (1.0 = certain match like \"Red Cell Count\" -> RBC, 0.5 = plausible but not sure, 0.0 = no match). Return JSON:\n{{\"mappings\": [{{\"from\": \"lab report name\", \"to_loinc\": \"LOINC code or null if no match\", \"confidence\": 0.0-1.0}}]}}",
         unresolved_names.join(", "),
         known_list.join("\n")
     );
@@ -265,7 +265,10 @@ async fn llm_resolve_markers(
     struct Mapping {
         from: String,
         to_loinc: Option<String>,
+        #[serde(default = "default_llm_confidence")]
+        confidence: f64,
     }
+    fn default_llm_confidence() -> f64 { 0.85 }
 
     let mappings: Vec<Mapping> = match serde_json::from_str::<MappingResponse>(cleaned) {
         Ok(r) => r.mappings,
@@ -278,6 +281,7 @@ async fn llm_resolve_markers(
                             Some(Mapping {
                                 from: item.get("from")?.as_str()?.to_string(),
                                 to_loinc: item.get("to_loinc").and_then(|v| v.as_str().map(String::from)),
+                                confidence: item.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.85),
                             })
                         })
                         .collect()
@@ -301,7 +305,9 @@ async fn llm_resolve_markers(
             m.from.to_lowercase() == u.marker_name.to_lowercase()
         });
 
-        let loinc = mapping.and_then(|m| m.to_loinc.as_deref()).filter(|s| !s.is_empty() && *s != "null");
+        let (loinc, conf) = mapping
+            .map(|m| (m.to_loinc.as_deref().filter(|s| !s.is_empty() && *s != "null").map(String::from), m.confidence))
+            .unwrap_or((None, 0.0));
 
         if let Some(loinc_code) = loinc {
             // Find the tracked biomarker
@@ -327,7 +333,7 @@ async fn llm_resolve_markers(
                     reference_low: None,
                     reference_high: None,
                     flag: None,
-                    confidence: 0.85, // LLM-resolved confidence
+                    confidence: conf,
                     detection_limit: None,
                 });
                 continue;
