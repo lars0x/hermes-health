@@ -1,3 +1,4 @@
+<div id="commit-result"></div>
 <div class="card">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
     <div class="card-title" style="margin-bottom: 0;">
@@ -16,7 +17,7 @@
 
   <form id="commit-form"
         hx-post="/api/v1/reports/{{ report_id }}/commit"
-        hx-target="#review-section"
+        hx-target="#commit-result"
         hx-swap="innerHTML">
     <input type="hidden" name="selected" id="selected-indices" value="">
 

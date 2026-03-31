@@ -279,14 +279,15 @@ pub async fn extraction_status(
             id
         ))),
         "extracted" => {
-            // Load the extraction result and render the review table
-            let extraction = get_extraction_result(&report)?;
-            let ctx = minijinja::context! {
-                report => report,
-                extraction => extraction,
-                report_id => id,
-            };
-            state.templates.render("components/review_table.html", ctx).map(Html)
+            let count = report.extracted_count.unwrap_or(0);
+            let unresolved = report.unresolved_count.unwrap_or(0);
+            Ok(Html(format!(
+                r##"<div class="alert alert-success">
+                    Extraction complete: {} biomarkers found, {} unresolved.
+                    <a href="/imports/{}" style="font-weight: 500;">Review results &rarr;</a>
+                </div>"##,
+                count, unresolved, id
+            )))
         }
         "failed" => {
             let error_msg = report
