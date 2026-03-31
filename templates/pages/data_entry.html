@@ -84,8 +84,7 @@
             hx-target="#import-progress"
             hx-swap="innerHTML"
             hx-encoding="multipart/form-data"
-            onsubmit="var b=this.querySelector('button'); if(b.disabled) return false; b.disabled=true; b.textContent='Uploading...';"
-            hx-on::after-request="this.reset(); var b=this.querySelector('button'); b.disabled=false; b.textContent='Upload & Extract';"
+            hx-on::after-request="document.getElementById('file-input').value = '';">
         <div class="form-group">
           <label for="file">Select PDF or CSV file</label>
           <input type="file" name="file" id="file-input" accept=".pdf,.csv" required
