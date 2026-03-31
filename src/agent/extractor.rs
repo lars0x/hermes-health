@@ -34,7 +34,7 @@ pub async fn run_direct_extraction(
     let text = if raw_text.len() > 8000 { &raw_text[..8000] } else { raw_text };
 
     let prompt = format!(
-        "/nothink\nExtract ALL biomarker results from this lab report.\nAlso extract the date the test/specimen was COLLECTED (not the date the report was printed or produced). Look for fields like \"Date Collected\", \"Specimen Date\", \"Collection Date\", or \"Date of Test\".\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\" or null, \"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"reference_low\": number or null, \"reference_high\": number or null, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
+        "/nothink\nExtract ALL biomarker results from this lab report.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"reference_low\": number or null, \"reference_high\": number or null, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
         text
     );
 
@@ -80,9 +80,9 @@ pub async fn run_direct_extraction(
     let _ = std::fs::write("/tmp/hermes-raw-response.json", response_text);
 
     // Parse the JSON response - handle both array and object-with-array formats
-    let (rows, test_date) = parse_extraction_response(response_text)?;
+    let rows = parse_extraction_response(response_text)?;
 
-    tracing::info!("Parsed {} lab result rows, test_date={:?}", rows.len(), test_date);
+    tracing::info!("Parsed {} lab result rows", rows.len());
 
     // Post-process: LOINC matching + unit conversion
     // First load all tracked biomarkers for alias matching
@@ -164,18 +164,25 @@ pub async fn run_direct_extraction(
         });
     }
 
-    // Second pass: use LLM to resolve remaining unmatched markers
-    if !unresolved.is_empty() && !tracked.is_empty() {
-        let (resolved, still_unresolved) = llm_resolve_markers(
-            &client, &config, &tracked, &pool, unresolved,
-        ).await;
-        observations.extend(resolved);
-        unresolved = still_unresolved;
-    }
+    // Second pass: run LLM resolution and date extraction in parallel
+    let resolve_future = async {
+        if !unresolved.is_empty() && !tracked.is_empty() {
+            llm_resolve_markers(&client, &config, &tracked, &pool, unresolved).await
+        } else {
+            (vec![], unresolved)
+        }
+    };
+
+    let date_future = llm_extract_test_date(&client, &config, raw_text);
+
+    let ((resolved, still_unresolved), test_date) =
+        tokio::join!(resolve_future, date_future);
+
+    observations.extend(resolved);
 
     Ok(ExtractionResult {
         observations,
-        unresolved,
+        unresolved: still_unresolved,
         model_used: config.ollama.model.clone(),
         agent_turns: 1,
         test_date,
@@ -347,9 +354,69 @@ async fn llm_resolve_markers(
     (resolved, still_unresolved)
 }
 
-/// Parse the LLM's JSON response, returning (rows, test_date).
+/// Extract the test/specimen collection date from the lab report via a dedicated LLM call.
+/// Looks for collection date specifically, not report print date.
+async fn llm_extract_test_date(
+    client: &reqwest::Client,
+    config: &HermesConfig,
+    raw_text: &str,
+) -> Option<String> {
+    // Only send the first 2000 chars - the date is usually near the top
+    let text = if raw_text.len() > 2000 { &raw_text[..2000] } else { raw_text };
+
+    let prompt = format!(
+        "/nothink\nExtract the date the blood test or specimen was COLLECTED from this lab report.\nLook for: \"Date Collected\", \"Specimen Date\", \"Collection Date\", \"Date of Test\", \"Date Drawn\", \"Sample Date\".\nDo NOT use the report print date, report date, or date issued.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\"}} or {{\"test_date\": null}} if not found.\n\n{}",
+        text
+    );
+
+    let response = client
+        .post(format!("{}/api/chat", config.ollama.url))
+        .json(&serde_json::json!({
+            "model": config.ollama.model,
+            "messages": [
+                {"role": "system", "content": "/nothink"},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": false,
+            "format": "json",
+            "think": false,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": 256,
+                "num_ctx": 4096
+            }
+        }))
+        .send()
+        .await
+        .ok()?;
+
+    let body: serde_json::Value = response.json().await.ok()?;
+    let content = body.get("message")?.get("content")?.as_str()?;
+
+    // Strip markdown fences
+    let cleaned = if content.trim().starts_with("```") {
+        let first_nl = content.find('\n').unwrap_or(3);
+        let inner = &content[first_nl..];
+        inner.rfind("```").map(|p| &inner[..p]).unwrap_or(inner).trim()
+    } else {
+        content.trim()
+    };
+
+    let parsed: serde_json::Value = serde_json::from_str(cleaned).ok()?;
+    let date = parsed.get("test_date")?.as_str()?;
+
+    if date.is_empty() || date == "null" {
+        tracing::info!("Test date not found in report");
+        None
+    } else {
+        tracing::info!("Extracted test date: {}", date);
+        Some(date.to_string())
+    }
+}
+
+/// Parse the LLM's JSON response into lab result rows.
 /// Handles various formats: direct array, object wrapping array, single object.
-fn parse_extraction_response(text: &str) -> Result<(Vec<LabResultRow>, Option<String>)> {
+fn parse_extraction_response(text: &str) -> Result<Vec<LabResultRow>> {
     // Strip markdown code fences if present
     let trimmed = text.trim();
     let trimmed = if trimmed.starts_with("```") {
@@ -367,28 +434,23 @@ fn parse_extraction_response(text: &str) -> Result<(Vec<LabResultRow>, Option<St
 
     // Try direct parse as array (no test_date in this format)
     if let Ok(rows) = serde_json::from_str::<Vec<LabResultRow>>(trimmed) {
-        return Ok((rows, None));
+        return Ok(rows);
     }
 
-    // Try as object with a nested array + optional test_date
+    // Try as object with a nested array
     if let Ok(obj) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        let test_date = obj
-            .get("test_date")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
         if let Some(obj_map) = obj.as_object() {
             for (_key, value) in obj_map {
                 if let Ok(rows) = serde_json::from_value::<Vec<LabResultRow>>(value.clone()) {
                     if !rows.is_empty() {
-                        return Ok((rows, test_date));
+                        return Ok(rows);
                     }
                 }
             }
         }
         // Try as single object
         if let Ok(row) = serde_json::from_value::<LabResultRow>(obj) {
-            return Ok((vec![row], test_date));
+            return Ok(vec![row]);
         }
     }
 
@@ -397,7 +459,7 @@ fn parse_extraction_response(text: &str) -> Result<(Vec<LabResultRow>, Option<St
         if let Some(end) = trimmed.rfind(']') {
             let json_str = &trimmed[start..=end];
             if let Ok(rows) = serde_json::from_str::<Vec<LabResultRow>>(json_str) {
-                return Ok((rows, None));
+                return Ok(rows);
             }
         }
     }
