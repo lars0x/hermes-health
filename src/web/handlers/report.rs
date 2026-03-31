@@ -5,7 +5,7 @@ use axum::Json;
 use axum_extra::extract::Multipart;
 use sha2::{Digest, Sha256};
 
-use crate::agent::{self, ExtractionResult};
+use crate::agent::ExtractionResult;
 use crate::db::models::NewObservation;
 use crate::db::queries;
 use crate::error::HermesError;
@@ -125,45 +125,16 @@ pub async fn upload(
 
     let report = queries::get_report_by_id(&state.pool, report_id).await?;
 
-    // Create a new import
+    // Create import as queued
     let import_id = queries::create_import(&state.pool, report_id, &state.config.ollama.model).await?;
-    queries::update_import_status(&state.pool, import_id, "extracting").await?;
+    queries::update_import_status(&state.pool, import_id, "queued").await?;
 
-    // Extract text
-    let raw_text = if format == "pdf" {
-        extract_pdf_text(&report.file_path)?
-    } else {
-        std::fs::read_to_string(&report.file_path)?
-    };
-
-    // Spawn background extraction
-    let pool = state.pool.clone();
-    let catalog = state.catalog.clone();
-    let config = state.config.clone();
-
-    tokio::spawn(async move {
-        tracing::info!("Starting extraction for import {} (report {})", import_id, report_id);
-        match agent::run_extraction(pool.clone(), catalog, config, &raw_text).await {
-            Ok(result) => {
-                let json = serde_json::to_string(&result).unwrap_or_default();
-                let _ = queries::update_import_result(
-                    &pool, import_id, "extracted", Some(&json),
-                    result.agent_turns as i64,
-                    result.observations.len() as i64,
-                    result.unresolved.len() as i64,
-                    result.test_date.as_deref(),
-                ).await;
-                tracing::info!("Import {} complete: {} obs, {} unresolved",
-                    import_id, result.observations.len(), result.unresolved.len());
-            }
-            Err(e) => {
-                let error_json = serde_json::json!({"error": e.to_string()}).to_string();
-                let _ = queries::update_import_result(
-                    &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None,
-                ).await;
-                tracing::error!("Import {} failed: {}", import_id, e);
-            }
-        }
+    // Submit to extraction queue (worker processes sequentially)
+    let _ = state.extraction_queue.send(crate::web::extraction_queue::ExtractionJob {
+        import_id,
+        report_id,
+        file_path: report.file_path.clone(),
+        format: format.to_string(),
     });
 
     Ok(Html(format!(
@@ -190,9 +161,15 @@ pub async fn import_status(
     let import = queries::get_import_by_id(&state.pool, id).await?;
 
     match import.status.as_str() {
+        "queued" => Ok(Html(format!(
+            r##"<div id="extraction-status" hx-get="/api/v1/imports/{}/status" hx-trigger="every 3s" hx-swap="innerHTML">
+            <div class="alert" style="background: var(--amber-bg); color: var(--amber-dark);">Queued for extraction. Another import is being processed...</div>
+            </div>"##,
+            id
+        ))),
         "extracting" | "pending" => Ok(Html(format!(
             r##"<div id="extraction-status" hx-get="/api/v1/imports/{}/status" hx-trigger="every 3s" hx-swap="innerHTML">
-            <div class="alert" style="background: var(--info-bg); color: var(--info-text);">Extraction in progress...</div>
+            <div class="alert" style="background: var(--info-bg); color: var(--info-text);">Extracting biomarkers. This may take 1-2 minutes...</div>
             </div>"##,
             id
         ))),
@@ -369,34 +346,6 @@ pub struct MapForm {
 }
 
 // --- Helpers ---
-
-fn extract_pdf_text(path: &str) -> Result<String, HermesError> {
-    let bytes = std::fs::read(path)?;
-    match pdf_extract::extract_text_from_mem(&bytes) {
-        Ok(text) if !text.trim().is_empty() => return Ok(text),
-        Ok(_) => tracing::warn!("pdf-extract returned empty text, trying Python fallback"),
-        Err(e) => tracing::warn!("pdf-extract failed: {e}, trying Python fallback"),
-    }
-
-    let output = std::process::Command::new("python3")
-        .args(["-c", &format!(
-            "import pypdf; r = pypdf.PdfReader('{}'); print('\\n'.join(p.extract_text() for p in r.pages))",
-            path.replace('\'', "\\'")
-        )])
-        .output()
-        .map_err(|e| HermesError::Pdf(format!("Failed to run Python PDF extractor: {e}")))?;
-
-    if output.status.success() {
-        let text = String::from_utf8_lossy(&output.stdout).to_string();
-        if text.trim().is_empty() {
-            return Err(HermesError::Pdf("PDF text extraction returned empty result".to_string()));
-        }
-        Ok(text)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(HermesError::Pdf(format!("Python PDF extraction failed: {stderr}")))
-    }
-}
 
 fn get_extraction_result_from_import(import: &crate::db::models::Import) -> Result<ExtractionResult, HermesError> {
     let json = import.raw_extraction.as_deref()

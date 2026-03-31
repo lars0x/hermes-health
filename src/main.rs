@@ -283,11 +283,21 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!("Auto-seeded biomarkers on first run");
             }
 
+            let catalog = Arc::new(catalog);
+            let config = Arc::new(cfg);
+
+            let extraction_queue = web::extraction_queue::start_worker(
+                pool.clone(),
+                catalog.clone(),
+                config.clone(),
+            );
+
             let state = web::AppState {
                 pool,
-                catalog: Arc::new(catalog),
-                config: Arc::new(cfg),
+                catalog,
+                config,
                 templates: web::templates::TemplateEngine::new(),
+                extraction_queue,
             };
 
             let app = web::routes::router().with_state(state);

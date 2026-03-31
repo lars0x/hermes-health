@@ -21,8 +21,10 @@
           <span class="pill pill-supplement">ready for review</span>
         {% elif i.status == "failed" %}
           <span class="pill pill-medication">failed</span>
-        {% elif i.status == "extracting" or i.status == "pending" %}
+        {% elif i.status == "extracting" %}
           <span class="pill" style="background: var(--info-bg); color: var(--info-text);">extracting...</span>
+        {% elif i.status == "queued" or i.status == "pending" %}
+          <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark);">queued</span>
         {% else %}
           <span class="pill pill-other">{{ i.status }}</span>
         {% endif %}
