@@ -12,9 +12,13 @@
         <div class="attention-values">
           <span class="val {% if item.range_status == 'out_of_reference' %}text-red{% else %}text-amber{% endif %}">{{ item.value }} {{ item.unit }}</span>
           <span class="trend">
-            {% if item.direction == "increasing" %}&#9650;{% elif item.direction == "decreasing" %}&#9660;{% else %}&#9654;{% endif %}
-            {{ item.status }}
-            {% if item.rate != 0 %} &middot; {{ "%.1f"|format(item.rate) }}%/yr{% endif %}
+            {% if item.status == "insufficient_data" %}
+              {% if item.range_status == "out_of_reference" %}out of range{% else %}suboptimal{% endif %}
+            {% else %}
+              {% if item.direction == "increasing" %}&#9650;{% elif item.direction == "decreasing" %}&#9660;{% else %}&#9654;{% endif %}
+              {{ item.status }}
+              {% if item.rate != 0 %} &middot; {{ "%.1f"|format(item.rate) }}%/yr{% endif %}
+            {% endif %}
           </span>
         </div>
       </div>
