@@ -43,10 +43,65 @@ pub async fn interventions_page(
     }
 
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today_date = chrono::Local::now().date_naive();
+
+    // Compute timeline bar positions
+    let mut timeline_rows = Vec::new();
+    if !interventions.is_empty() {
+        let parse = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+
+        // Find global date range
+        let mut earliest = today_date;
+        let mut latest = today_date;
+        for i in &interventions {
+            if let Some(d) = parse(&i.started_at) {
+                if d < earliest { earliest = d; }
+            }
+            if let Some(end) = i.ended_at.as_deref().and_then(|s| parse(s)) {
+                if end > latest { latest = end; }
+            }
+        }
+        // Add 30 day padding
+        let range_start = earliest - chrono::Days::new(15);
+        let range_end = latest + chrono::Days::new(30);
+        let total_days = (range_end - range_start).num_days().max(1) as f64;
+
+        for i in &interventions {
+            let start = parse(&i.started_at).unwrap_or(today_date);
+            let end = i.ended_at.as_deref().and_then(|s| parse(s)).unwrap_or(today_date);
+            let bar_left = ((start - range_start).num_days() as f64 / total_days * 100.0).max(0.0);
+            let bar_width = (((end - start).num_days().max(1)) as f64 / total_days * 100.0).max(2.0);
+
+            timeline_rows.push(minijinja::context! {
+                id => i.id,
+                name => i.name,
+                category => i.category,
+                started_at => i.started_at,
+                active => i.ended_at.is_none(),
+                bar_left => bar_left as i32,
+                bar_width => bar_width as i32,
+            });
+        }
+
+        let ctx = minijinja::context! {
+            is_fragment => is_htmx,
+            current_path => "/interventions",
+            interventions => rows,
+            timeline_interventions => timeline_rows,
+            timeline_start => range_start.format("%Y-%m-%d").to_string(),
+            timeline_end => range_end.format("%Y-%m-%d").to_string(),
+            today => today,
+        };
+        return state.templates.render("pages/interventions.html", ctx).map(Html);
+    }
+
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
         current_path => "/interventions",
         interventions => rows,
+        timeline_interventions => timeline_rows,
+        timeline_start => "",
+        timeline_end => "",
         today => today,
     };
     state.templates.render("pages/interventions.html", ctx).map(Html)

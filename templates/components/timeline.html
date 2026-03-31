@@ -1,0 +1,42 @@
+{% if timeline_interventions %}
+<div style="position: relative; padding: 8px 0;">
+  {% for i in timeline_interventions %}
+  <a href="/interventions/{{ i.id }}" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+    <div style="width: 120px; flex-shrink: 0; text-align: right; font-size: 11px;">
+      <div style="font-weight: 500;">{{ i.name }}</div>
+      <div style="color: var(--text-secondary);">{{ i.started_at }}</div>
+    </div>
+    <div style="flex: 1; height: 24px; position: relative; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+      <div style="
+        position: absolute;
+        left: {{ i.bar_left }}%;
+        width: {{ i.bar_width }}%;
+        height: 100%;
+        border-radius: 4px;
+        {% if i.category == 'supplement' %}background: var(--info-bg); border: 1px solid #c4ddf3;
+        {% elif i.category == 'exercise' %}background: var(--green-bg); border: 1px solid #b3e0d2;
+        {% elif i.category == 'medication' %}background: var(--amber-bg); border: 1px solid #ecd5a8;
+        {% elif i.category == 'diet' %}background: #F0E6FF; border: 1px solid #d4c0f0;
+        {% elif i.category == 'fasting' %}background: #FFE6E6; border: 1px solid #f0c0c0;
+        {% else %}background: var(--bg-secondary); border: 1px solid var(--border);
+        {% endif %}
+        display: flex; align-items: center; padding: 0 6px; font-size: 10px; white-space: nowrap; overflow: hidden;
+      ">
+        <span class="pill pill-{{ i.category }}" style="font-size: 9px; padding: 1px 6px;">{{ i.category }}</span>
+        {% if i.active %}
+        <span style="margin-left: auto; font-size: 9px; color: var(--green);">ongoing</span>
+        {% endif %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+
+  <!-- Date axis -->
+  <div style="display: flex; margin-left: 128px; font-size: 10px; color: var(--text-secondary); justify-content: space-between; margin-top: 4px;">
+    <span>{{ timeline_start }}</span>
+    <span>{{ timeline_end }}</span>
+  </div>
+</div>
+{% else %}
+<div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;">No interventions to display.</div>
+{% endif %}
