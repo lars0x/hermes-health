@@ -1,0 +1,41 @@
+{% if reports %}
+<table class="obs-table">
+  <thead>
+    <tr>
+      <th>File</th>
+      <th>Format</th>
+      <th>Status</th>
+      <th>Imported</th>
+      <th>Results</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in reports %}
+    <tr style="cursor: pointer;" onclick="window.location='/imports/{{ r.id }}'">
+      <td style="font-weight: 500;">{{ r.filename }}</td>
+      <td>{{ r.format }}</td>
+      <td>
+        {% if r.extraction_status == "committed" %}
+          <span class="pill pill-exercise">committed</span>
+        {% elif r.extraction_status == "extracted" %}
+          <span class="pill pill-supplement">ready for review</span>
+        {% elif r.extraction_status == "failed" %}
+          <span class="pill pill-medication">failed</span>
+        {% elif r.extraction_status == "extracting" %}
+          <span class="pill" style="background: var(--info-bg); color: var(--info-text);">extracting...</span>
+        {% else %}
+          <span class="pill pill-other">{{ r.extraction_status }}</span>
+        {% endif %}
+      </td>
+      <td style="font-size:12px; color: var(--text-secondary);">{{ r.imported_at }}</td>
+      <td style="font-size:12px;">
+        {% if r.extracted_count %}{{ r.extracted_count }} found{% endif %}
+        {% if r.unresolved_count %}, {{ r.unresolved_count }} unresolved{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div style="font-size: 13px; color: var(--text-secondary); padding: 8px 0;">No imports yet.</div>
+{% endif %}

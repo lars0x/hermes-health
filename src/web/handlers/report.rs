@@ -15,7 +15,7 @@ use crate::services::observation;
 use crate::web::htmx;
 use crate::web::AppState;
 
-/// GET /import - render the import page
+/// GET /import - render the import page with list of imports
 pub async fn import_page(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -30,11 +30,56 @@ pub async fn import_page(
     state.templates.render("pages/import.html", ctx).map(Html)
 }
 
+/// GET /imports/list - HTMX partial for the imports list (auto-refreshes)
+pub async fn imports_list(
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let reports = queries::list_reports(&state.pool).await.unwrap_or_default();
+    let ctx = minijinja::context! { reports => reports };
+    state.templates.render("components/imports_list.html", ctx).map(Html)
+}
+
+/// GET /imports/{id} - import detail page
+pub async fn import_detail(
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let is_htmx = htmx::is_htmx_request(&headers);
+    let report = queries::get_report_by_id(&state.pool, id).await?;
+
+    let extraction = if report.extraction_status == "extracted" || report.extraction_status == "committed" {
+        get_extraction_result(&report).ok()
+    } else {
+        None
+    };
+
+    let error_message = if report.extraction_status == "failed" {
+        report.raw_extraction.as_deref()
+            .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
+            .and_then(|v| v.get("error").and_then(|e| e.as_str().map(String::from)))
+    } else {
+        None
+    };
+
+    let ctx = minijinja::context! {
+        is_fragment => is_htmx,
+        current_path => format!("/imports/{}", id),
+        report => report,
+        extraction => extraction,
+        report_id => id,
+        error_message => error_message,
+    };
+    state.templates.render("pages/import_detail.html", ctx).map(Html)
+}
+
 /// POST /api/v1/reports/upload - multipart file upload
+/// Returns HTML: success message + auto-polling extraction status div.
+/// Immediately spawns background extraction.
 pub async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<Json<serde_json::Value>, HermesError> {
+) -> Result<Html<String>, HermesError> {
     let mut file_bytes = Vec::new();
     let mut filename = String::new();
 
@@ -100,12 +145,54 @@ pub async fn upload(
     )
     .await?;
 
-    Ok(Json(serde_json::json!({
-        "report_id": report_id,
-        "filename": filename,
-        "format": format,
-        "status": "pending"
-    })))
+    // Immediately start extraction in background
+    queries::update_report_status(&state.pool, report_id, "extracting", None).await?;
+
+    let raw_text = if format == "pdf" {
+        extract_pdf_text(&file_path.to_string_lossy())?
+    } else {
+        std::fs::read_to_string(&file_path)?
+    };
+
+    let pool = state.pool.clone();
+    let catalog = state.catalog.clone();
+    let config = state.config.clone();
+
+    tokio::spawn(async move {
+        tracing::info!("Starting extraction for report {}", report_id);
+        match agent::run_extraction(pool.clone(), catalog, config, &raw_text).await {
+            Ok(result) => {
+                let json = serde_json::to_string(&result).unwrap_or_default();
+                let _ = queries::update_report_extraction(
+                    &pool, report_id, "extracted", Some(&json),
+                    Some(&result.model_used), result.agent_turns as i64,
+                    result.observations.len() as i64, result.unresolved.len() as i64,
+                ).await;
+                tracing::info!("Extraction complete for report {}: {} obs, {} unresolved",
+                    report_id, result.observations.len(), result.unresolved.len());
+            }
+            Err(e) => {
+                let error_json = serde_json::json!({"error": e.to_string()}).to_string();
+                let _ = queries::update_report_status(&pool, report_id, "failed", Some(&error_json)).await;
+                tracing::error!("Extraction failed for report {}: {}", report_id, e);
+            }
+        }
+    });
+
+    // Return HTML with upload success + auto-polling status div
+    Ok(Html(format!(
+        r##"<div class="alert alert-success">Uploaded: {} ({}). Extraction started...</div>
+<div id="extraction-status"
+     hx-get="/api/v1/reports/{}/status"
+     hx-trigger="load, every 3s"
+     hx-target="#extraction-status"
+     hx-swap="innerHTML">
+  <div class="alert" style="background: var(--info-bg); color: var(--info-text);">
+    Extracting biomarkers from your report. This may take 1-2 minutes...
+  </div>
+</div>"##,
+        filename, format, report_id
+    )))
 }
 
 /// POST /api/v1/reports/{id}/extract - trigger background extraction
@@ -249,6 +336,15 @@ pub async fn commit(
         .filter_map(|s| s.trim().parse().ok())
         .collect();
 
+    // Use test_date from extraction, or user-provided date, or today as fallback
+    let observed_at = form
+        .test_date
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or(extraction.test_date.as_deref())
+        .unwrap_or(&chrono::Local::now().format("%Y-%m-%d").to_string())
+        .to_string();
+
     let mut committed = 0;
     let mut errors = Vec::new();
 
@@ -258,7 +354,7 @@ pub async fn commit(
                 biomarker: obs.loinc_code.clone(),
                 value: obs.canonical_value,
                 unit: obs.canonical_unit.clone(),
-                observed_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
+                observed_at: observed_at.clone(),
                 lab_name: None,
                 fasting: None,
                 notes: None,
@@ -316,6 +412,7 @@ pub async fn map_marker(
 #[derive(serde::Deserialize)]
 pub struct CommitForm {
     pub selected: String,
+    pub test_date: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

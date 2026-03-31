@@ -20,6 +20,17 @@
         hx-swap="innerHTML">
     <input type="hidden" name="selected" id="selected-indices" value="">
 
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius);">
+      <label style="font-size: 12px; color: var(--text-secondary); white-space: nowrap;">Test date:</label>
+      {% if extraction.test_date %}
+        <input type="date" name="test_date" value="{{ extraction.test_date }}" style="font-size: 13px; padding: 4px 8px;">
+        <span style="font-size: 11px; color: var(--green);">extracted from report</span>
+      {% else %}
+        <input type="date" name="test_date" value="" style="font-size: 13px; padding: 4px 8px; border-color: var(--amber);" required>
+        <span style="font-size: 11px; color: var(--amber-dark);">not found in report - please enter the date the test was conducted</span>
+      {% endif %}
+    </div>
+
     <table class="obs-table" style="font-size: 12px;">
       <thead>
         <tr>

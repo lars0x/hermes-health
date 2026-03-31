@@ -28,6 +28,8 @@ pub fn router() -> Router<AppState> {
         .route("/biomarkers/{id}", get(handlers::biomarker::biomarker_detail))
         .route("/entry", get(handlers::observation::data_entry_page))
         .route("/import", get(handlers::report::import_page))
+        .route("/imports/list", get(handlers::report::imports_list))
+        .route("/imports/{id}", get(handlers::report::import_detail))
         .route("/settings", get(settings_page))
         // HTMX partials
         .route(

@@ -10,6 +10,9 @@ pub struct ExtractionResult {
     pub unresolved: Vec<UnresolvedMarker>,
     pub model_used: String,
     pub agent_turns: u32,
+    /// Date the test/specimen was collected (extracted from report), YYYY-MM-DD
+    #[serde(default)]
+    pub test_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

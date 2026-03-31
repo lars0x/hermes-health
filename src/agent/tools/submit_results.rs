@@ -160,6 +160,7 @@ impl Tool for SubmitResultsTool {
             unresolved,
             model_used: String::new(),
             agent_turns: 0,
+            test_date: None,
         };
 
         let mut slot = self.result_slot.lock().await;
