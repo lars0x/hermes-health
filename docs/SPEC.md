@@ -957,6 +957,12 @@ projection_horizon_days = 180      # How far ahead to project for approaching_li
 - Backup/restore commands
 - PWA manifest for mobile home screen install (optional)
 
+### Phase 6 — Advanced Import
+- Vision-based PDF extraction for reports where values are rendered as images/graphics (e.g., web portal print-to-PDF with colored bar charts instead of text values)
+- Extract images from PDF pages, send to a vision-capable LLM (e.g., LLaVA via Ollama) to read values from bar charts and visual indicators
+- OCR fallback via tesseract for scanned/image-only PDFs
+- Configurable reference range sources (longevity-oriented ranges vs conventional lab ranges, user-editable)
+
 ---
 
 ## 12. Open Questions

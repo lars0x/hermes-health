@@ -34,9 +34,11 @@ pub async fn run_direct_extraction(
     let text = if raw_text.len() > 8000 { &raw_text[..8000] } else { raw_text };
 
     let prompt = format!(
-        "/nothink\nExtract ALL biomarker results from this lab report.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"reference_low\": number or null, \"reference_high\": number or null, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
+        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"reference_low\": number or null, \"reference_high\": number or null, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
         text
     );
+
+    tracing::info!("Extraction prompt: {} chars, text starts with: {:?}", prompt.len(), &text[..text.len().min(100)]);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(config.ollama.timeout_seconds))
@@ -75,8 +77,7 @@ pub async fn run_direct_extraction(
         .and_then(|v| v.as_str())
         .ok_or_else(|| HermesError::Agent(format!("No message content in Ollama response: {}", body)))?;
 
-    tracing::info!("Ollama returned {} chars", response_text.len());
-    // Write raw response to a debug file for inspection
+    tracing::info!("Ollama returned {} chars, first 200: {:?}", response_text.len(), &response_text[..response_text.len().min(200)]);
     let _ = std::fs::write("/tmp/hermes-raw-response.json", response_text);
 
     // Parse the JSON response - handle both array and object-with-array formats
