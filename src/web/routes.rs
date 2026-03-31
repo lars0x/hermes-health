@@ -27,6 +27,7 @@ pub fn router() -> Router<AppState> {
         .route("/", get(handlers::dashboard::dashboard))
         .route("/biomarkers/{id}", get(handlers::biomarker::biomarker_detail))
         .route("/entry", get(handlers::observation::data_entry_page))
+        .route("/import", get(handlers::report::import_page))
         .route("/settings", get(settings_page))
         // HTMX partials
         .route(
@@ -67,6 +68,31 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/interventions",
             get(handlers::api::list_interventions),
+        )
+        // Reports
+        .route(
+            "/api/v1/reports/upload",
+            post(handlers::report::upload),
+        )
+        .route(
+            "/api/v1/reports/{id}/extract",
+            post(handlers::report::trigger_extraction),
+        )
+        .route(
+            "/api/v1/reports/{id}/status",
+            get(handlers::report::extraction_status),
+        )
+        .route(
+            "/api/v1/reports/{id}/extraction",
+            get(handlers::report::get_extraction_json),
+        )
+        .route(
+            "/api/v1/reports/{id}/commit",
+            post(handlers::report::commit),
+        )
+        .route(
+            "/api/v1/reports/{id}/map",
+            post(handlers::report::map_marker),
         )
         // Form submission (HTMX)
         .route(

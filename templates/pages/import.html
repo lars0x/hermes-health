@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Import Lab Report - Hermes Health{% endblock %}
+{% block content %}
+<div style="max-width: 800px;">
+  <div class="card" style="margin-bottom: 12px;">
+    <div class="card-title">Upload lab report</div>
+    <form id="upload-form"
+          hx-post="/api/v1/reports/upload"
+          hx-target="#upload-result"
+          hx-swap="innerHTML"
+          hx-encoding="multipart/form-data">
+      <div class="form-group">
+        <label for="file">Select PDF or CSV file</label>
+        <input type="file" name="file" id="file-input" accept=".pdf,.csv" required
+               style="font-size: 14px; padding: 8px 0;">
+      </div>
+      <button type="submit" class="btn-primary" style="max-width: 200px;">Upload</button>
+    </form>
+  </div>
+
+  <div id="upload-result"></div>
+  <div id="extraction-status"></div>
+  <div id="review-section"></div>
+
+  {% if reports %}
+  <div class="card" style="margin-top: 16px;">
+    <div class="card-title">Previous imports</div>
+    <table class="obs-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Format</th>
+          <th>Status</th>
+          <th>Imported</th>
+          <th>Results</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td>{{ r.filename }}</td>
+          <td>{{ r.format }}</td>
+          <td>
+            {% if r.extraction_status == "extracted" or r.extraction_status == "committed" %}
+              <span class="text-green">{{ r.extraction_status }}</span>
+            {% elif r.extraction_status == "failed" %}
+              <span class="text-red">failed</span>
+            {% elif r.extraction_status == "extracting" %}
+              <span class="text-blue">extracting...</span>
+            {% else %}
+              {{ r.extraction_status }}
+            {% endif %}
+          </td>
+          <td style="font-size:12px;">{{ r.imported_at }}</td>
+          <td>
+            {% if r.extracted_count %}{{ r.extracted_count }} extracted{% endif %}
+            {% if r.unresolved_count %}, {{ r.unresolved_count }} unresolved{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+// After upload success, trigger extraction
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  if (evt.detail.pathInfo && evt.detail.pathInfo.requestPath === '/api/v1/reports/upload' && evt.detail.successful) {
+    try {
+      var data = JSON.parse(evt.detail.xhr.responseText);
+      if (data.report_id) {
+        // Trigger extraction
+        htmx.ajax('POST', '/api/v1/reports/' + data.report_id + '/extract', {
+          target: '#extraction-status',
+          swap: 'innerHTML'
+        });
+        // Show upload success
+        document.getElementById('upload-result').innerHTML =
+          '<div class="alert alert-success">Uploaded: ' + data.filename + ' (' + data.format + ')</div>';
+      }
+    } catch(e) {}
+  }
+});
+</script>
+{% endblock %}

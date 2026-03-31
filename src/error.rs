@@ -25,6 +25,15 @@ pub enum HermesError {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("PDF extraction error: {0}")]
+    Pdf(String),
+
+    #[error("agent error: {0}")]
+    Agent(String),
+
+    #[error("duplicate: {0}")]
+    Duplicate(String),
 }
 
 pub type Result<T> = std::result::Result<T, HermesError>;

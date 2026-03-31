@@ -1,0 +1,119 @@
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <div class="card-title" style="margin-bottom: 0;">
+      Review extraction
+      <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+        {% if report.model_used %} &middot; {{ report.model_used }}{% endif %}
+        {% if report.extracted_count %} &middot; {{ report.extracted_count }} extracted{% endif %}
+        {% if report.unresolved_count %} &middot; {{ report.unresolved_count }} unresolved{% endif %}
+      </span>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button onclick="selectAllMatched()" class="pill-btn" style="font-size: 11px;">Accept all matched</button>
+      <button onclick="commitSelected()" class="btn-primary" style="width: auto; padding: 5px 16px; font-size: 12px;">Commit selected</button>
+    </div>
+  </div>
+
+  <form id="commit-form"
+        hx-post="/api/v1/reports/{{ report_id }}/commit"
+        hx-target="#review-section"
+        hx-swap="innerHTML">
+    <input type="hidden" name="selected" id="selected-indices" value="">
+
+    <table class="obs-table" style="font-size: 12px;">
+      <thead>
+        <tr>
+          <th style="width:30px;"></th>
+          <th>Marker</th>
+          <th>Value</th>
+          <th>Unit</th>
+          <th>Flag</th>
+          <th>LOINC</th>
+          <th>Confidence</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obs in extraction.observations %}
+        <tr>
+          <td><input type="checkbox" class="obs-check" data-idx="{{ loop.index0 }}"
+                     {% if obs.confidence >= 0.85 %}checked{% endif %}></td>
+          <td style="font-weight: 500;">{{ obs.marker_name }}</td>
+          <td>{{ obs.original_value }}{% if not obs.original_value %} {{ obs.value }}{% endif %}</td>
+          <td>
+            {{ obs.unit }}
+            {% if obs.unit != obs.canonical_unit %}
+              <span class="text-blue" style="font-size: 10px;">&rarr;{{ obs.canonical_value }} {{ obs.canonical_unit }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if obs.flag == "H" %}<span class="flag-H">H</span>{% elif obs.flag == "L" %}<span class="flag-L">L</span>{% else %}&mdash;{% endif %}
+          </td>
+          <td style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+          <td>
+            {% if obs.confidence >= 0.95 %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% exact</span>
+            {% elif obs.confidence >= 0.90 %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% alias</span>
+            {% elif obs.confidence >= 0.85 %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% fuzzy</span>
+            {% else %}
+              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% low</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if obs.reference_low or obs.reference_high %}
+              <span style="font-size: 10px; color: var(--text-secondary);">
+                ref: {{ obs.reference_low|default("-") }}-{{ obs.reference_high|default("-") }}
+              </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% for u in extraction.unresolved %}
+        <tr style="background: rgba(250,238,218,0.15);">
+          <td><input type="checkbox" class="obs-check" data-idx="-1" disabled></td>
+          <td style="font-weight: 500; color: var(--amber-dark);">{{ u.marker_name }}</td>
+          <td>{{ u.value }}</td>
+          <td>{{ u.unit }}</td>
+          <td>&mdash;</td>
+          <td style="color: var(--amber-dark);">?</td>
+          <td><span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">unresolved</span></td>
+          <td>
+            <span style="font-size: 11px; color: var(--amber-dark); cursor: pointer; text-decoration: underline;"
+                  onclick="promptMap('{{ u.marker_name }}', {{ report_id }})">map</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
+</div>
+
+<script>
+function selectAllMatched() {
+  document.querySelectorAll('.obs-check:not(:disabled)').forEach(function(cb) { cb.checked = true; });
+}
+
+function commitSelected() {
+  var indices = [];
+  document.querySelectorAll('.obs-check:checked').forEach(function(cb) {
+    var idx = cb.getAttribute('data-idx');
+    if (idx !== '-1') indices.push(idx);
+  });
+  document.getElementById('selected-indices').value = indices.join(',');
+  htmx.trigger(document.getElementById('commit-form'), 'submit');
+}
+
+function promptMap(markerName, reportId) {
+  var code = prompt('Enter LOINC code for "' + markerName + '":');
+  if (code) {
+    htmx.ajax('POST', '/api/v1/reports/' + reportId + '/map', {
+      values: { marker_name: markerName, loinc_code: code },
+      target: 'closest tr td:last-child',
+      swap: 'innerHTML'
+    });
+  }
+}
+</script>

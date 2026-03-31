@@ -61,6 +61,10 @@ pub struct Report {
     pub imported_at: String,
     pub extraction_status: String,
     pub raw_extraction: Option<String>,
+    pub model_used: Option<String>,
+    pub agent_turns: Option<i64>,
+    pub extracted_count: Option<i64>,
+    pub unresolved_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

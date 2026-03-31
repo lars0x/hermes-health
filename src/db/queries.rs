@@ -286,6 +286,46 @@ pub async fn update_report_status(
     Ok(())
 }
 
+pub async fn get_report_by_id(pool: &SqlitePool, id: i64) -> Result<Report> {
+    sqlx::query_as::<_, Report>("SELECT * FROM reports WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| HermesError::NotFound(format!("report id={id}")))
+}
+
+pub async fn list_reports(pool: &SqlitePool) -> Result<Vec<Report>> {
+    let reports = sqlx::query_as::<_, Report>("SELECT * FROM reports ORDER BY imported_at DESC")
+        .fetch_all(pool)
+        .await?;
+    Ok(reports)
+}
+
+pub async fn update_report_extraction(
+    pool: &SqlitePool,
+    id: i64,
+    status: &str,
+    raw_extraction: Option<&str>,
+    model_used: Option<&str>,
+    agent_turns: i64,
+    extracted_count: i64,
+    unresolved_count: i64,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE reports SET extraction_status = ?, raw_extraction = ?, model_used = ?, agent_turns = ?, extracted_count = ?, unresolved_count = ? WHERE id = ?"
+    )
+    .bind(status)
+    .bind(raw_extraction)
+    .bind(model_used)
+    .bind(agent_turns)
+    .bind(extracted_count)
+    .bind(unresolved_count)
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 // --- Interventions ---
 
 pub async fn insert_intervention(pool: &SqlitePool, i: &NewIntervention) -> Result<i64> {

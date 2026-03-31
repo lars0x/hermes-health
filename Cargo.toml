@@ -28,6 +28,10 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1.0.102"
 minijinja = { version = "2", features = ["loader"] }
 mime_guess = "2.0.5"
+rig-core = "0.33.0"
+pdf-extract = "0.10.0"
+axum-extra = { version = "0.12.5", features = ["multipart"] }
+schemars = "1"
 
 [dev-dependencies]
 tempfile = "3"
