@@ -279,9 +279,14 @@ pub async fn commit(
 
     let mut committed = 0;
     let mut errors = Vec::new();
+    let mut committed_loinc_codes: Vec<String> = Vec::new();
 
     for idx in &selected {
         if let Some(obs) = extraction.observations.get(*idx) {
+            // Skip duplicates: if we already committed this LOINC code from this import, skip
+            if committed_loinc_codes.contains(&obs.loinc_code) {
+                continue;
+            }
             let new_obs = NewObservation {
                 biomarker: obs.loinc_code.clone(),
                 value: obs.canonical_value,
@@ -294,7 +299,10 @@ pub async fn commit(
                 import_id: Some(id),
             };
             match observation::add_observation(&state.pool, &state.catalog, &new_obs).await {
-                Ok(_) => committed += 1,
+                Ok(_) => {
+                    committed += 1;
+                    committed_loinc_codes.push(obs.loinc_code.clone());
+                }
                 Err(e) => errors.push(format!("{}: {}", obs.marker_name, e)),
             }
         }
