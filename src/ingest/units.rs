@@ -82,19 +82,31 @@ fn get_unit_aliases() -> HashMap<&'static str, &'static str> {
     // fL
     m.insert("fl", "fL");
 
-    // 10*3/uL
+    // 10*3/uL (= x 10^9/L: 1 x10^9/L = 1 x10^3/uL)
     m.insert("10^3/ul", "10*3/uL");
     m.insert("k/ul", "10*3/uL");
     m.insert("x10e3/ul", "10*3/uL");
     m.insert("10*3/ul", "10*3/uL");
     m.insert("thou/ul", "10*3/uL");
+    m.insert("x 10^9/l", "10*3/uL");
+    m.insert("x10^9/l", "10*3/uL");
 
-    // 10*6/uL
+    // 10*6/uL (= x 10^12/L: 1 x10^12/L = 1 x10^6/uL)
     m.insert("10^6/ul", "10*6/uL");
     m.insert("m/ul", "10*6/uL");
     m.insert("x10e6/ul", "10*6/uL");
     m.insert("10*6/ul", "10*6/uL");
     m.insert("mil/ul", "10*6/uL");
+    m.insert("x 10^12/l", "10*6/uL");
+    m.insert("x10^12/l", "10*6/uL");
+
+    // umol/L variants (also handle µmol/L from reports)
+    m.insert("µmol/l", "umol/L");
+    m.insert("μmol/l", "umol/L");
+
+    // µg/L variants
+    m.insert("µg/l", "ug/L");
+    m.insert("μg/l", "ug/L");
 
     m
 }

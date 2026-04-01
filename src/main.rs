@@ -45,7 +45,8 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Init => {
             let count = services::seed::seed_biomarkers(&pool).await?;
-            println!("Database initialized. Seeded {} biomarkers.", count);
+            let conversions = services::conversions::seed_conversions_from_miracum(&pool).await?;
+            println!("Database initialized. Seeded {} biomarkers, {} unit conversions.", count, conversions);
             println!(
                 "LOINC catalog loaded: {} entries.",
                 catalog.entry_count()
@@ -282,6 +283,9 @@ async fn main() -> anyhow::Result<()> {
                 services::seed::seed_biomarkers(&pool).await?;
                 tracing::info!("Auto-seeded biomarkers on first run");
             }
+
+            // Register unit conversions from miracum table
+            services::conversions::seed_conversions_from_miracum(&pool).await?;
 
             let catalog = Arc::new(catalog);
             let config = Arc::new(cfg);

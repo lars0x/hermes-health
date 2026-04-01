@@ -234,7 +234,8 @@ async fn test_loinc_catalog_search() {
 }
 
 #[tokio::test]
-async fn test_unrecognized_unit_rejected() {
+async fn test_unrecognized_unit_stored_as_is() {
+    // Unknown units should be stored in original unit, not rejected
     let (pool, catalog) = setup().await;
     let obs = NewObservation {
         biomarker: "2093-3".to_string(),
@@ -248,7 +249,150 @@ async fn test_unrecognized_unit_rejected() {
         import_id: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await;
-    assert!(result.is_err());
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(r.value, 4.8); // stored as-is, no conversion
+}
+
+#[tokio::test]
+async fn test_cholesterol_mmol_to_mgdl() {
+    let (pool, catalog) = setup().await;
+    let obs = NewObservation {
+        biomarker: "2093-3".to_string(),
+        value: 5.51,  // 3 sig figs: 5.51 * 38.67 = 213.07, rounds to 213
+        unit: "mmol/L".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    // 5.51 * 38.67 = 213.07, rounded to 3 sig figs = 213
+    assert!(result.converted);
+    assert!(
+        (result.value - 213.0).abs() < 1.0,
+        "Expected ~213, got {}",
+        result.value
+    );
+}
+
+#[tokio::test]
+async fn test_glucose_mmol_to_mgdl() {
+    let (pool, catalog) = setup().await;
+    let obs = NewObservation {
+        biomarker: "Glucose".to_string(),
+        value: 5.5,
+        unit: "mmol/L".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    assert!(result.converted);
+    // 5.5 * 18.018 = 99.099, rounded to 2 sig figs = 99
+    assert!((result.value - 99.0).abs() < 1.0);
+}
+
+#[tokio::test]
+async fn test_hba1c_mmolmol_to_percent() {
+    let (pool, catalog) = setup().await;
+    let obs = NewObservation {
+        biomarker: "HbA1c".to_string(),
+        value: 42.0,
+        unit: "mmol/mol".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    assert!(result.converted);
+    // 42 * 0.0915 + 2.15 = 5.993, rounded to 2 sig figs = 6.0
+    assert!((result.value - 6.0).abs() < 0.1);
+}
+
+#[tokio::test]
+async fn test_cbc_x10e9_normalizes_to_canonical() {
+    let (pool, catalog) = setup().await;
+    // "x 10^9/L" should normalize to "10*3/uL" (same unit, different notation)
+    let obs = NewObservation {
+        biomarker: "WBC".to_string(),
+        value: 6.5,
+        unit: "x 10^9/L".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    // Should NOT be converted - units are equivalent
+    assert_eq!(result.value, 6.5);
+}
+
+#[tokio::test]
+async fn test_rbc_x10e12_normalizes_to_canonical() {
+    let (pool, catalog) = setup().await;
+    let obs = NewObservation {
+        biomarker: "RBC".to_string(),
+        value: 4.8,
+        unit: "x 10^12/L".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    assert_eq!(result.value, 4.8);
+}
+
+#[tokio::test]
+async fn test_same_unit_no_conversion() {
+    let (pool, catalog) = setup().await;
+    let obs = NewObservation {
+        biomarker: "2093-3".to_string(),
+        value: 185.0,
+        unit: "mg/dL".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    assert!(!result.converted);
+    assert_eq!(result.value, 185.0);
+}
+
+#[tokio::test]
+async fn test_case_insensitive_unit_match() {
+    let (pool, catalog) = setup().await;
+    // "mg/dl" should match "mg/dL" - value stored unchanged
+    let obs = NewObservation {
+        biomarker: "2093-3".to_string(),
+        value: 185.0,
+        unit: "mg/dl".to_string(),
+        observed_at: "2026-03-15".to_string(),
+        lab_name: None,
+        fasting: None,
+        notes: None,
+        report_id: None,
+        import_id: None,
+    };
+    let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
+    // Value should be stored unchanged (no numeric conversion)
+    assert_eq!(result.value, 185.0);
 }
 
 #[tokio::test]

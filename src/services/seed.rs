@@ -214,6 +214,16 @@ fn get_conversions_for(loinc_code: &str) -> Option<Vec<(&'static str, f64, f64)>
         // Homocysteine: SI is canonical (umol/L), no conversion needed
         // hsCRP: nmol/L -> mg/L (factor = 0.105)
         "30522-7" => Some(vec![("nmol/L", 0.105, 0.0)]),
+        // CBC: x 10^9/L -> 10*3/uL (identity: 1 x10^9/L = 1 x10^3/uL)
+        "6690-2" | "26515-7" => Some(vec![("x 10^9/L", 1.0, 0.0)]),
+        // RBC: x 10^12/L -> 10*6/uL (identity: 1 x10^12/L = 1 x10^6/uL)
+        "789-8" => Some(vec![("x 10^12/L", 1.0, 0.0)]),
+        // BUN (urea nitrogen): mmol/L -> mg/dL (MW urea=60.06, BUN=28.01; factor=2.8013)
+        "3094-0" => Some(vec![("mmol/L", 2.8013, 0.0)]),
+        // Bilirubin total: umol/L -> mg/dL (MW=584.66; factor=584.66/10000=0.058466)
+        "1975-2" => Some(vec![("umol/L", 0.058466, 0.0)]),
+        // Folate: nmol/L -> ng/mL (MW=441.40; factor=441.40/1000=0.44140)
+        "2284-8" => Some(vec![("nmol/L", 0.44140, 0.0)]),
         // HbA1c: mmol/mol -> % (IFCC -> NGSP)
         "4548-4" => Some(vec![("mmol/mol", 0.0915, 2.15)]),
         _ => None,
