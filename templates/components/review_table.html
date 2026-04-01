@@ -47,10 +47,16 @@
       </thead>
       <tbody>
         {% for obs in extraction.observations %}
-        <tr>
+        {% set is_duplicate = obs.loinc_code in duplicate_loinc_codes %}
+        <tr {% if is_duplicate %}style="background: rgba(226,75,74,0.06);"{% endif %}>
           <td><input type="checkbox" class="obs-check" data-idx="{{ loop.index0 }}"
-                     {% if obs.confidence >= 0.85 %}checked{% endif %}></td>
-          <td style="font-weight: 500;">{{ obs.marker_name }}</td>
+                     {% if obs.confidence >= 0.85 and not is_duplicate %}checked{% endif %}></td>
+          <td style="font-weight: 500;">
+            {{ obs.marker_name }}
+            {% if is_duplicate %}
+              <div style="font-size: 10px; color: var(--red); margin-top: 2px;">&#9888; Duplicate LOINC - uncheck one</div>
+            {% endif %}
+          </td>
           <td>{{ obs.original_value }}{% if not obs.original_value %} {{ obs.value }}{% endif %}</td>
           <td>
             {{ obs.unit }}

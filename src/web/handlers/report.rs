@@ -224,6 +224,17 @@ pub async fn import_detail(
         None
     };
 
+    // Find duplicate LOINC codes in extraction
+    let duplicate_loinc_codes: Vec<String> = if let Some(ref ext) = extraction {
+        let mut counts = std::collections::HashMap::new();
+        for obs in &ext.observations {
+            *counts.entry(obs.loinc_code.clone()).or_insert(0) += 1;
+        }
+        counts.into_iter().filter(|(_, c)| *c > 1).map(|(k, _)| k).collect()
+    } else {
+        vec![]
+    };
+
     let error_message = if import.status == "failed" {
         import.raw_extraction.as_deref()
             .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
@@ -240,6 +251,7 @@ pub async fn import_detail(
         extraction => extraction,
         import_id => id,
         error_message => error_message,
+        duplicate_loinc_codes => duplicate_loinc_codes,
     };
     state.templates.render("pages/import_detail.html", ctx).map(Html)
 }
@@ -279,14 +291,18 @@ pub async fn commit(
 
     let mut committed = 0;
     let mut errors = Vec::new();
-    let mut committed_loinc_codes: Vec<String> = Vec::new();
+    let mut committed_loinc_codes = Vec::new();
 
     for idx in &selected {
         if let Some(obs) = extraction.observations.get(*idx) {
-            // Skip duplicates: if we already committed this LOINC code from this import, skip
             if committed_loinc_codes.contains(&obs.loinc_code) {
+                errors.push(format!(
+                    "{}: duplicate LOINC {} - uncheck one of the conflicting rows",
+                    obs.marker_name, obs.loinc_code
+                ));
                 continue;
             }
+
             let new_obs = NewObservation {
                 biomarker: obs.loinc_code.clone(),
                 value: obs.canonical_value,
