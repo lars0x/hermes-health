@@ -96,25 +96,35 @@ function initCharts() {
               return u.valToPos(val, 'y', true);
             }
 
-            // Reference range fill (light red)
-            if (data.reference_low != null && data.reference_high != null) {
-              ctx.fillStyle = 'rgba(226,75,74,0.08)';
-              // Above reference
+            // Reference range fill (light red for out-of-range zones)
+            var topY = yToPos(scaleY.max || yMax + yPad);
+            var botY = yToPos(scaleY.min || yMin - yPad);
+            ctx.fillStyle = 'rgba(226,75,74,0.08)';
+            if (data.reference_high != null) {
+              // Above reference high = red zone
               var refHighY = yToPos(data.reference_high);
-              var topY = yToPos(scaleY.max || yMax + yPad);
               ctx.fillRect(lft, Math.min(topY, refHighY), rgt - lft, Math.abs(refHighY - topY));
-              // Below reference
+            }
+            if (data.reference_low != null) {
+              // Below reference low = red zone
               var refLowY = yToPos(data.reference_low);
-              var botY = yToPos(scaleY.min || yMin - yPad);
               ctx.fillRect(lft, Math.min(refLowY, botY), rgt - lft, Math.abs(botY - refLowY));
             }
 
             // Optimal range fill (light green)
+            ctx.fillStyle = 'rgba(29,158,117,0.1)';
             if (data.optimal_low != null && data.optimal_high != null) {
-              ctx.fillStyle = 'rgba(29,158,117,0.1)';
               var optLowY = yToPos(data.optimal_low);
               var optHighY = yToPos(data.optimal_high);
               ctx.fillRect(lft, Math.min(optLowY, optHighY), rgt - lft, Math.abs(optHighY - optLowY));
+            } else if (data.optimal_low != null) {
+              // One-sided: everything above optimal_low is green (e.g., HDL: higher is better)
+              var optLowY = yToPos(data.optimal_low);
+              ctx.fillRect(lft, Math.min(topY, optLowY), rgt - lft, Math.abs(optLowY - topY));
+            } else if (data.optimal_high != null) {
+              // One-sided: everything below optimal_high is green (e.g., LDL: lower is better)
+              var optHighY = yToPos(data.optimal_high);
+              ctx.fillRect(lft, Math.min(optHighY, botY), rgt - lft, Math.abs(botY - optHighY));
             }
 
             // Intervention markers (purple dashed vertical lines)
