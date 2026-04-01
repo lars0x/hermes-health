@@ -151,11 +151,22 @@ pub async fn normalize_observation(
                 notes_append: notes,
             })
         }
-        None => Err(HermesError::Conversion(format!(
-            "No conversion found from '{}' to '{}' for biomarker_id={}. \
-             Add a conversion rule or correct the unit.",
-            normalized_unit, canonical_unit, biomarker_id
-        ))),
+        None => {
+            // No conversion available - store in original unit
+            tracing::warn!(
+                "No conversion from '{}' to '{}' for biomarker_id={}. Storing in original unit.",
+                normalized_unit, canonical_unit, biomarker_id
+            );
+            Ok(NormalizedObservation {
+                value: parsed_value,
+                original_value: original_value_str.to_string(),
+                original_unit: original_unit_str.to_string(),
+                canonical_unit: normalized_unit,
+                precision: original_precision,
+                detection_limit,
+                notes_append: notes,
+            })
+        }
     }
 }
 
