@@ -78,20 +78,15 @@
   <!-- Import tab -->
   <div id="tab-import">
     <div class="card" style="margin-bottom: 12px;">
-      <div class="card-title">Upload lab report</div>
-      <form id="upload-form"
-            hx-post="/api/v1/reports/upload"
-            hx-target="#import-progress"
-            hx-swap="innerHTML"
-            hx-encoding="multipart/form-data"
-            hx-on::after-request="document.getElementById('file-input').value = '';">
-        <div class="form-group">
-          <label for="file">Select PDF or CSV file</label>
-          <input type="file" name="file" id="file-input" accept=".pdf,.csv" required
-                 style="font-size: 14px; padding: 8px 0;">
-        </div>
-        <button type="submit" class="btn-primary" style="max-width: 200px;">Upload & Extract</button>
-      </form>
+      <div class="card-title">Upload lab reports</div>
+      <div class="form-group">
+        <label>Select PDF or CSV files</label>
+        <input type="file" id="file-picker" accept=".pdf,.csv"
+               style="font-size: 14px; padding: 8px 0;"
+               onchange="addFile(this)">
+      </div>
+      <div id="file-list" style="margin-bottom: 12px;"></div>
+      <button id="upload-btn" class="btn-primary" style="max-width: 200px; display: none;" onclick="uploadAll()">Upload & Extract</button>
     </div>
 
     <div id="import-progress"></div>
@@ -128,5 +123,95 @@ function switchTab(tab, btn) {
     btn.classList.add('active');
   }
 })();
+
+// --- Multi-file upload ---
+var pendingFiles = [];
+
+function addFile(input) {
+  if (!input.files.length) return;
+  var file = input.files[0];
+  // Prevent duplicates by name+size
+  if (pendingFiles.some(function(f) { return f.name === file.name && f.size === file.size; })) {
+    input.value = '';
+    return;
+  }
+  pendingFiles.push(file);
+  input.value = '';
+  renderFileList();
+}
+
+function removeFile(idx) {
+  pendingFiles.splice(idx, 1);
+  renderFileList();
+}
+
+function renderFileList() {
+  var el = document.getElementById('file-list');
+  var btn = document.getElementById('upload-btn');
+  if (!pendingFiles.length) {
+    el.innerHTML = '';
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = '';
+  var html = '';
+  for (var i = 0; i < pendingFiles.length; i++) {
+    var f = pendingFiles[i];
+    var ext = f.name.split('.').pop().toUpperCase();
+    var size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1) + ' MB' : (f.size/1024).toFixed(0) + ' KB';
+    html += '<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:0.5px solid var(--border);">';
+    html += '<span class="pill pill-other" style="font-size:10px;">' + ext + '</span>';
+    html += '<span style="font-size:13px; flex:1;">' + f.name + '</span>';
+    html += '<span style="font-size:11px; color:var(--text-secondary);">' + size + '</span>';
+    html += '<span style="cursor:pointer; color:var(--red); font-size:14px; padding:0 4px;" onclick="removeFile(' + i + ')">&times;</span>';
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function uploadAll() {
+  if (!pendingFiles.length) return;
+  var btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  var progress = document.getElementById('import-progress');
+  progress.innerHTML = '<div class="alert" style="background:var(--info-bg);color:var(--info-text);">Uploading ' + pendingFiles.length + ' file(s)...</div>';
+
+  var files = pendingFiles.slice();
+  pendingFiles = [];
+  renderFileList();
+
+  var uploaded = 0;
+  var total = files.length;
+
+  function uploadNext() {
+    if (uploaded >= total) {
+      btn.disabled = false;
+      btn.textContent = 'Upload & Extract';
+      htmx.trigger(document.body, 'imports-updated');
+      return;
+    }
+    var formData = new FormData();
+    formData.append('file', files[uploaded]);
+    fetch('/api/v1/reports/upload', { method: 'POST', body: formData })
+      .then(function(resp) { return resp.text(); })
+      .then(function(html) {
+        uploaded++;
+        progress.innerHTML = html;
+        if (uploaded < total) {
+          progress.innerHTML += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">Uploaded ' + uploaded + '/' + total + ' files...</div>';
+        }
+        htmx.trigger(document.body, 'imports-updated');
+        htmx.process(progress);
+        uploadNext();
+      })
+      .catch(function(err) {
+        uploaded++;
+        progress.innerHTML += '<div class="alert alert-error">Failed to upload: ' + files[uploaded-1].name + '</div>';
+        uploadNext();
+      });
+  }
+  uploadNext();
+}
 </script>
 {% endblock %}
