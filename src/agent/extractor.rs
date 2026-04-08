@@ -99,9 +99,7 @@ pub async fn run_direct_extraction(
     tracing::info!("Parsed {} lab result rows", rows.len());
 
     // Post-process: LOINC matching + unit conversion
-    // First load all tracked biomarkers for alias matching
     let tracked = crate::db::queries::list_biomarkers(&pool, None).await.unwrap_or_default();
-
     let mut observations = Vec::new();
     let mut unresolved = Vec::new();
 
@@ -119,81 +117,44 @@ pub async fn run_direct_extraction(
             serde_json::Value::Null => continue, // truly empty - skip
             other => (0.0, other.to_string(), true),
         };
-        let marker_lower = row.marker_name.to_lowercase();
 
-        // 1. Check tracked biomarkers by name/alias first (highest priority)
-        let tracked_match = tracked.iter().find(|bm| {
-            bm.name.to_lowercase() == marker_lower
-                || bm.loinc_code.to_lowercase() == marker_lower
-                || bm.aliases_vec().iter().any(|a| a.to_lowercase() == marker_lower)
-        });
-
-        let (loinc_code, confidence, bm) = if let Some(bm) = tracked_match {
-            (bm.loinc_code.clone(), 1.0_f64, Some(bm.clone()))
-        } else {
-            // 2. Fuzzy match against tracked biomarkers only (not the full 59K LOINC catalog)
-            let fuzzy_threshold = 0.85;
-            let mut best_score = 0.0_f64;
-            let mut best_bm: Option<&crate::db::models::Biomarker> = None;
-
-            for bm in &tracked {
-                let sim_name = strsim::jaro_winkler(&marker_lower, &bm.name.to_lowercase());
-                let sim_aliases = bm.aliases_vec().iter()
-                    .map(|a| strsim::jaro_winkler(&marker_lower, &a.to_lowercase()))
-                    .fold(0.0_f64, f64::max);
-                let best_sim = sim_name.max(sim_aliases);
-                if best_sim > best_score {
-                    best_score = best_sim;
-                    best_bm = Some(bm);
-                }
-            }
-
-            if best_score >= fuzzy_threshold {
-                let bm = best_bm.unwrap();
-                tracing::info!(
-                    "Tier 2 fuzzy match: '{}' -> '{}' ({}) at {:.0}%",
-                    row.marker_name, bm.name, bm.loinc_code, best_score * 100.0
+        // Match against LOINC catalog (specimen-aware, quantitative lab tests only)
+        let candidates = catalog.search_lab(&row.marker_name, 1, row.specimen.as_deref());
+        let (loinc_code, confidence, bm) = if let Some(best) = candidates.first() {
+            if best.confidence >= 0.85 {
+                let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &best.loinc_code)
+                    .await
+                    .ok()
+                    .flatten();
+                tracing::debug!(
+                    "LOINC match: '{}' (specimen: {:?}) -> {} '{}' at {:.0}%",
+                    row.marker_name, row.specimen, best.loinc_code, best.canonical_name, best.confidence * 100.0
                 );
-                (bm.loinc_code.clone(), best_score, Some(bm.clone()))
+                (best.loinc_code.clone(), best.confidence, bm)
             } else {
-                // 3. Search LOINC catalog (quantitative lab tests only, filtered by specimen if available)
-                tracing::info!(
-                    "Tier 3 catalog search: '{}' (specimen: {:?}, fuzzy best was {:.0}%)",
-                    row.marker_name, row.specimen, best_score * 100.0
+                tracing::debug!(
+                    "LOINC match below threshold: '{}' -> {} at {:.0}%",
+                    row.marker_name, best.loinc_code, best.confidence * 100.0
                 );
-                let candidates = catalog.search_lab(&row.marker_name, 1, row.specimen.as_deref());
-                if let Some(best) = candidates.first() {
-                    tracing::info!(
-                        "Tier 3 result: '{}' -> {} '{}' at {:.0}%",
-                        row.marker_name, best.loinc_code, best.canonical_name, best.confidence * 100.0
-                    );
-                    if best.confidence >= 0.85 {
-                        let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &best.loinc_code)
-                            .await
-                            .ok()
-                            .flatten();
-                        (best.loinc_code.clone(), best.confidence, bm)
-                    } else {
-                        unresolved.push(UnresolvedMarker {
-                            marker_name: row.marker_name,
-                            value: original_value_str.clone(),
-                            unit: row.unit.clone().unwrap_or_default(),
-                            reason: format!("Best LOINC catalog match {:.0}% below threshold", best.confidence * 100.0),
-                            specimen: row.specimen.clone(),
-                        });
-                        continue;
-                    }
-                } else {
-                    unresolved.push(UnresolvedMarker {
-                        marker_name: row.marker_name,
-                        value: original_value_str.clone(),
-                        unit: row.unit.clone().unwrap_or_default(),
-                        reason: "No match in tracked biomarkers or LOINC catalog".to_string(),
-                        specimen: row.specimen.clone(),
-                    });
-                    continue;
-                }
+                unresolved.push(UnresolvedMarker {
+                    marker_name: row.marker_name,
+                    value: original_value_str.clone(),
+                    unit: row.unit.clone().unwrap_or_default(),
+                    reason: format!("Best LOINC match {:.0}% below 85% threshold", best.confidence * 100.0),
+                    specimen: row.specimen.clone(),
+                });
+                continue;
             }
+        } else {
+            tracing::debug!("No LOINC match: '{}' (specimen: {:?})", row.marker_name, row.specimen);
+            unresolved.push(UnresolvedMarker {
+                marker_name: row.marker_name,
+                value: original_value_str.clone(),
+                unit: row.unit.clone().unwrap_or_default(),
+                reason: "No LOINC catalog match found".to_string(),
+                specimen: row.specimen.clone(),
+            });
+            continue;
         };
 
         let unit_str = row.unit.clone().unwrap_or_default();
