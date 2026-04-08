@@ -263,6 +263,9 @@ pub async fn run_direct_extraction(
         });
     }
 
+    // Auto-dedup unit variants (same LOINC, same marker name, different units)
+    let observations = dedup_unit_variants(&pool, observations).await;
+
     Ok((ExtractionResult {
         observations,
         unresolved,
@@ -270,6 +273,94 @@ pub async fn run_direct_extraction(
         agent_turns: resolve_turns,
         test_date,
     }, llm_log))
+}
+
+/// Auto-deduplicate unit-variant observations.
+///
+/// Singapore lab reports often list the same measurement in both SI and conventional units.
+/// When we detect this pattern (same LOINC code, same marker name, different units), we keep
+/// the observation whose unit matches the biomarker's canonical unit (zero conversion error).
+///
+/// Safety checks - all must pass for auto-dedup:
+/// 1. All entries in the group have the same marker_name (case-insensitive)
+/// 2. All entries have different units (after normalization)
+/// 3. At least one entry's unit matches the biomarker's canonical unit
+async fn dedup_unit_variants(
+    pool: &SqlitePool,
+    observations: Vec<ExtractedObservation>,
+) -> Vec<ExtractedObservation> {
+    use crate::ingest::units;
+    use std::collections::{HashMap, HashSet};
+
+    // Group indices by loinc_code
+    let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, obs) in observations.iter().enumerate() {
+        groups.entry(&obs.loinc_code).or_default().push(i);
+    }
+
+    let mut remove: HashSet<usize> = HashSet::new();
+
+    for (loinc_code, indices) in &groups {
+        if indices.len() < 2 {
+            continue;
+        }
+
+        // Safety check 1: all marker names must match (case-insensitive)
+        let first_name = observations[indices[0]].marker_name.to_lowercase();
+        if !indices.iter().all(|&i| observations[i].marker_name.to_lowercase() == first_name) {
+            continue;
+        }
+
+        // Safety check 2: all units must be different (after normalization)
+        let normalized_units: Vec<String> = indices.iter()
+            .map(|&i| units::normalize_unit(&observations[i].unit))
+            .collect();
+        let unique_units: HashSet<&str> = normalized_units.iter().map(|s| s.as_str()).collect();
+        if unique_units.len() < indices.len() {
+            continue; // Some share a unit - genuine duplicate, leave for human review
+        }
+
+        // Safety check 3: find the observation matching canonical unit
+        let bm = crate::db::queries::get_biomarker_by_loinc(pool, loinc_code)
+            .await.ok().flatten();
+        let canonical_unit = match &bm {
+            Some(b) => units::normalize_unit(&b.unit),
+            None => continue,
+        };
+
+        let keep_idx = indices.iter().enumerate()
+            .find(|(i, _)| normalized_units[*i] == canonical_unit)
+            .map(|(_, &idx)| idx);
+
+        let keep_idx = match keep_idx {
+            Some(idx) => idx,
+            None => continue, // No observation matches canonical - leave for human review
+        };
+
+        // Remove all others in this group
+        for &idx in indices {
+            if idx != keep_idx {
+                tracing::info!(
+                    "Auto-dedup: {} '{}' - keeping {} {} (canonical), dropping {} {}",
+                    loinc_code,
+                    observations[keep_idx].marker_name,
+                    observations[keep_idx].value, observations[keep_idx].unit,
+                    observations[idx].value, observations[idx].unit,
+                );
+                remove.insert(idx);
+            }
+        }
+    }
+
+    if !remove.is_empty() {
+        tracing::info!("Auto-dedup removed {} unit-variant duplicates", remove.len());
+    }
+
+    observations.into_iter()
+        .enumerate()
+        .filter(|(i, _)| !remove.contains(i))
+        .map(|(_, obs)| obs)
+        .collect()
 }
 
 /// Execute a search_loinc tool call against the LOINC catalog.
