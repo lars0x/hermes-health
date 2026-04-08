@@ -24,8 +24,6 @@ pub struct ExtractedObservation {
     pub unit: String,
     pub canonical_unit: String,
     pub canonical_value: f64,
-    pub reference_low: Option<f64>,
-    pub reference_high: Option<f64>,
     pub flag: Option<String>,
     pub confidence: f64,
     pub detection_limit: Option<String>,

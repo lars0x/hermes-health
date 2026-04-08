@@ -19,11 +19,11 @@ batch of observations and any unresolved markers. Do not submit partial results.
 Important:
 - Extract ALL biomarker results, not just a few
 - Preserve the original value and unit exactly as printed
-- Include reference ranges if shown on the report (e.g., "125-200")
 - Note any flags (H for high, L for low)
 - If a value has a detection limit prefix (< or >), note it
 "#;
 
+#[allow(dead_code)]
 pub const EXTRACTOR_PREAMBLE: &str = r#"Extract all biomarker results from the lab report text.
-For each result, provide: marker_name, value (numeric), unit, reference_low (if shown), reference_high (if shown), and flag (H/L if shown, or null).
+For each result, provide: marker_name, value (numeric), unit, and flag (H/L if shown, or null).
 Return ALL results found in the report."#;

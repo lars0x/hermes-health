@@ -15,8 +15,6 @@ pub struct LabResultRow {
     pub value: serde_json::Value, // number, string ("Negative"), or null
     #[serde(default)]
     pub unit: Option<String>,
-    pub reference_low: Option<f64>,
-    pub reference_high: Option<f64>,
     pub flag: Option<String>,
 }
 
@@ -43,7 +41,7 @@ pub async fn run_direct_extraction(
     };
 
     let prompt = format!(
-        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"reference_low\": number or null, \"reference_high\": number or null, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
+        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
         text
     );
 
@@ -181,8 +179,6 @@ pub async fn run_direct_extraction(
             unit: unit_str,
             canonical_unit,
             canonical_value,
-            reference_low: row.reference_low,
-            reference_high: row.reference_high,
             flag: row.flag,
             confidence,
             detection_limit: None,
@@ -362,8 +358,6 @@ async fn llm_resolve_markers(
                     unit: u.unit,
                     canonical_unit,
                     canonical_value,
-                    reference_low: None,
-                    reference_high: None,
                     flag: None,
                     confidence: conf,
                     detection_limit: None,

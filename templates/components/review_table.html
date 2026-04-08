@@ -10,6 +10,13 @@
       </span>
     </div>
     <div style="display: flex; gap: 8px;">
+      <button class="pill-btn" style="font-size: 11px; color: var(--red); border-color: var(--red);"
+              hx-post="/api/v1/imports/{{ import_id }}/decline"
+              hx-target="#commit-result"
+              hx-swap="innerHTML"
+              hx-confirm="Decline this import? No observations will be saved.">
+        Decline
+      </button>
       <button onclick="selectAllMatched()" class="pill-btn" style="font-size: 11px;">Accept all matched</button>
       <button onclick="commitSelected()" class="btn-primary" style="width: auto; padding: 5px 16px; font-size: 12px;">Commit selected</button>
     </div>
@@ -79,13 +86,7 @@
               <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% low</span>
             {% endif %}
           </td>
-          <td>
-            {% if obs.reference_low or obs.reference_high %}
-              <span style="font-size: 10px; color: var(--text-secondary);">
-                ref: {{ obs.reference_low|default("-") }}-{{ obs.reference_high|default("-") }}
-              </span>
-            {% endif %}
-          </td>
+          <td></td>
         </tr>
         {% endfor %}
 

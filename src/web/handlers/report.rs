@@ -15,18 +15,18 @@ use crate::web::AppState;
 
 // --- Import list page ---
 
-pub async fn import_page(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Html<String>, HermesError> {
-    let is_htmx = htmx::is_htmx_request(&headers);
-    let imports = queries::list_imports(&state.pool).await.unwrap_or_default();
-
-    // Enrich imports with report filenames
-    let mut import_rows = Vec::new();
-    for imp in &imports {
-        let report = queries::get_report_by_id(&state.pool, imp.report_id).await.ok();
-        import_rows.push(minijinja::context! {
+async fn enrich_imports(pool: &sqlx::SqlitePool, imports: &[crate::db::models::Import]) -> Vec<minijinja::Value> {
+    let mut rows = Vec::new();
+    for imp in imports {
+        let report = queries::get_report_by_id(pool, imp.report_id).await.ok();
+        let skipped_count = if imp.status == "committed" {
+            let committed = queries::count_observations_for_import(pool, imp.id).await.unwrap_or(0);
+            let extracted = imp.extracted_count.unwrap_or(0);
+            (extracted - committed).max(0)
+        } else {
+            0
+        };
+        rows.push(minijinja::context! {
             id => imp.id,
             filename => report.as_ref().map(|r| r.filename.clone()).unwrap_or_default(),
             format => report.as_ref().map(|r| r.format.clone()).unwrap_or_default(),
@@ -34,9 +34,20 @@ pub async fn import_page(
             status => imp.status,
             extracted_count => imp.extracted_count,
             unresolved_count => imp.unresolved_count,
+            skipped_count => skipped_count,
             created_at => imp.created_at,
         });
     }
+    rows
+}
+
+pub async fn import_page(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let is_htmx = htmx::is_htmx_request(&headers);
+    let imports = queries::list_imports(&state.pool).await.unwrap_or_default();
+    let import_rows = enrich_imports(&state.pool, &imports).await;
 
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
@@ -50,20 +61,7 @@ pub async fn imports_list(
     State(state): State<AppState>,
 ) -> Result<Html<String>, HermesError> {
     let imports = queries::list_imports(&state.pool).await.unwrap_or_default();
-    let mut import_rows = Vec::new();
-    for imp in &imports {
-        let report = queries::get_report_by_id(&state.pool, imp.report_id).await.ok();
-        import_rows.push(minijinja::context! {
-            id => imp.id,
-            filename => report.as_ref().map(|r| r.filename.clone()).unwrap_or_default(),
-            format => report.as_ref().map(|r| r.format.clone()).unwrap_or_default(),
-            model_used => imp.model_used,
-            status => imp.status,
-            extracted_count => imp.extracted_count,
-            unresolved_count => imp.unresolved_count,
-            created_at => imp.created_at,
-        });
-    }
+    let import_rows = enrich_imports(&state.pool, &imports).await;
     let ctx = minijinja::context! { imports => import_rows };
     state.templates.render("components/imports_list.html", ctx).map(Html)
 }
@@ -87,7 +85,7 @@ pub async fn upload(
             file_bytes = field
                 .bytes()
                 .await
-                .map_err(|e| HermesError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+                .map_err(|e| HermesError::Io(std::io::Error::other(e)))?
                 .to_vec();
         }
     }
@@ -243,6 +241,40 @@ pub async fn import_detail(
         None
     };
 
+    // Find skipped observations (extracted but not committed)
+    let skipped_observations = if import.status == "committed" {
+        if let Some(ref ext) = extraction {
+            let committed = queries::list_observations_for_import(&state.pool, id).await.unwrap_or_default();
+            let mut committed_loinc_codes = std::collections::HashSet::new();
+            for o in &committed {
+                if let Ok(bm) = queries::get_biomarker_by_id(&state.pool, o.biomarker_id).await {
+                    committed_loinc_codes.insert(bm.loinc_code);
+                }
+            }
+            ext.observations.iter().enumerate()
+                .filter(|(_, obs)| !committed_loinc_codes.contains(&obs.loinc_code))
+                .map(|(idx, obs)| minijinja::context! {
+                    idx => idx,
+                    marker_name => obs.marker_name,
+                    value => obs.value,
+                    original_value => obs.original_value,
+                    unit => obs.unit,
+                    canonical_value => obs.canonical_value,
+                    canonical_unit => obs.canonical_unit,
+                    loinc_code => obs.loinc_code,
+                    confidence => obs.confidence,
+                    flag => obs.flag,
+                })
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    let skipped_count = skipped_observations.len();
+
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
         current_path => format!("/imports/{}", id),
@@ -252,6 +284,8 @@ pub async fn import_detail(
         import_id => id,
         error_message => error_message,
         duplicate_loinc_codes => duplicate_loinc_codes,
+        skipped_observations => skipped_observations,
+        skipped_count => skipped_count,
     };
     state.templates.render("pages/import_detail.html", ctx).map(Html)
 }
@@ -338,10 +372,56 @@ pub async fn commit(
     )))
 }
 
+// --- Uncommit ---
+
+pub async fn uncommit(
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let import = queries::get_import_by_id(&state.pool, id).await?;
+
+    if import.status != "committed" {
+        return Err(HermesError::Validation(
+            "Only committed imports can be undone".to_string(),
+        ));
+    }
+
+    let deleted = queries::delete_observations_by_import(&state.pool, id).await?;
+    queries::update_import_status(&state.pool, id, "extracted").await?;
+
+    Ok(Html(format!(
+        r##"<div class="alert alert-success">Removed {} observations. Import is ready for review again.</div>
+        <script>setTimeout(function(){{ window.location.reload(); }}, 1500);</script>"##,
+        deleted
+    )))
+}
+
+// --- Decline ---
+
+pub async fn decline(
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let import = queries::get_import_by_id(&state.pool, id).await?;
+
+    if import.status != "extracted" {
+        return Err(HermesError::Validation(
+            "Only imports ready for review can be declined".to_string(),
+        ));
+    }
+
+    queries::update_import_status(&state.pool, id, "declined").await?;
+
+    Ok(Html(
+        r##"<div class="alert" style="background: var(--bg-secondary); color: var(--text-secondary);">Import declined.</div>
+        <script>setTimeout(function(){ window.location.reload(); }, 1500);</script>"##.to_string()
+    ))
+}
+
 // --- LOINC mapping ---
 
 pub async fn map_marker(
-    Path(id): Path<i64>,
+    Path(_id): Path<i64>,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<MapForm>,
 ) -> Result<Html<String>, HermesError> {
@@ -380,5 +460,5 @@ pub struct MapForm {
 fn get_extraction_result_from_import(import: &crate::db::models::Import) -> Result<ExtractionResult, HermesError> {
     let json = import.raw_extraction.as_deref()
         .ok_or_else(|| HermesError::NotFound("No extraction data".to_string()))?;
-    serde_json::from_str(json).map_err(|e| HermesError::Json(e))
+    serde_json::from_str(json).map_err(HermesError::Json)
 }

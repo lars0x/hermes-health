@@ -101,6 +101,14 @@ pub fn router() -> Router<AppState> {
             post(handlers::report::commit),
         )
         .route(
+            "/api/v1/imports/{id}/uncommit",
+            post(handlers::report::uncommit),
+        )
+        .route(
+            "/api/v1/imports/{id}/decline",
+            post(handlers::report::decline),
+        )
+        .route(
             "/api/v1/imports/{id}/map",
             post(handlers::report::map_marker),
         )

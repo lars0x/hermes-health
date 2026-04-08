@@ -19,8 +19,6 @@ impl ValidateRowTool {
 pub struct ValidateArgs {
     pub loinc_code: String,
     pub value: f64,
-    pub reference_low: Option<f64>,
-    pub reference_high: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,8 +46,6 @@ impl Tool for ValidateRowTool {
                 "properties": {
                     "loinc_code": { "type": "string", "description": "LOINC code" },
                     "value": { "type": "number", "description": "Numeric value in canonical units" },
-                    "reference_low": { "type": "number", "description": "Reference range low (if extracted)" },
-                    "reference_high": { "type": "number", "description": "Reference range high (if extracted)" }
                 },
                 "required": ["loinc_code", "value"]
             }),
@@ -69,12 +65,6 @@ impl Tool for ValidateRowTool {
                 if ref_low > 0.0 && args.value < ref_low / 10.0 {
                     warnings.push(format!("Value {} is implausibly low (<1/10 ref low {})", args.value, ref_low));
                 }
-            }
-        }
-
-        if let (Some(low), Some(high)) = (args.reference_low, args.reference_high) {
-            if low >= high {
-                warnings.push(format!("Reference range invalid: low ({}) >= high ({})", low, high));
             }
         }
 

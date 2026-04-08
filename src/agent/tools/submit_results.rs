@@ -3,7 +3,7 @@ use tokio::sync::Mutex;
 
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::agent::{ExtractedObservation, ExtractionResult, UnresolvedMarker};
 
@@ -36,8 +36,6 @@ pub struct SubmitObservation {
     pub canonical_unit: String,
     #[serde(default)]
     pub canonical_value: f64,
-    pub reference_low: Option<f64>,
-    pub reference_high: Option<f64>,
     pub flag: Option<String>,
     #[serde(default = "default_confidence")]
     pub confidence: f64,
@@ -89,8 +87,6 @@ impl Tool for SubmitResultsTool {
                                 "unit": { "type": "string", "description": "Unit as reported" },
                                 "canonical_unit": { "type": "string", "description": "Canonical unit after conversion" },
                                 "canonical_value": { "type": "number", "description": "Value in canonical units" },
-                                "reference_low": { "type": "number", "description": "Reference range low" },
-                                "reference_high": { "type": "number", "description": "Reference range high" },
                                 "flag": { "type": "string", "description": "H for high, L for low, or null" },
                                 "confidence": { "type": "number", "description": "LOINC match confidence 0-1" },
                                 "detection_limit": { "type": "string", "description": "< or > if applicable" }
@@ -134,8 +130,6 @@ impl Tool for SubmitResultsTool {
                     unit: o.unit,
                     canonical_unit,
                     canonical_value,
-                    reference_low: o.reference_low,
-                    reference_high: o.reference_high,
                     flag: o.flag,
                     confidence: o.confidence,
                     detection_limit: o.detection_limit,

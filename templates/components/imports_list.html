@@ -21,6 +21,8 @@
           <span class="pill pill-supplement">ready for review</span>
         {% elif i.status == "failed" %}
           <span class="pill pill-medication">failed</span>
+        {% elif i.status == "declined" %}
+          <span class="pill" style="background: var(--bg-secondary); color: var(--text-secondary);">declined</span>
         {% elif i.status == "extracting" %}
           <span class="pill" style="background: var(--info-bg); color: var(--info-text);">extracting...</span>
         {% elif i.status == "queued" or i.status == "pending" %}
@@ -33,6 +35,7 @@
       <td style="font-size:12px;">
         {% if i.extracted_count %}{{ i.extracted_count }} found{% endif %}
         {% if i.unresolved_count %}, {{ i.unresolved_count }} unresolved{% endif %}
+        {% if i.skipped_count %}<span style="color: var(--amber-dark);">, {{ i.skipped_count }} skipped</span>{% endif %}
       </td>
     </tr>
     {% endfor %}

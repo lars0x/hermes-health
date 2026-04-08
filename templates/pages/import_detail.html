@@ -19,6 +19,8 @@
         <span class="pill pill-exercise">committed</span>
       {% elif import.status == "extracted" %}
         <span class="pill pill-supplement">ready for review</span>
+      {% elif import.status == "declined" %}
+        <span class="pill" style="background: var(--bg-secondary); color: var(--text-secondary);">declined</span>
       {% elif import.status == "failed" %}
         <span class="pill pill-medication">failed</span>
       {% elif import.status == "extracting" %}
@@ -43,8 +45,18 @@
     {% elif import.status == "extracted" and extraction %}
       {% include "components/review_table.html" %}
     {% elif import.status == "committed" and extraction %}
+      <div id="uncommit-result"></div>
       <div class="card">
-        <div class="card-title">Committed observations</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div class="card-title" style="margin-bottom: 0;">Committed observations</div>
+          <button class="pill-btn" style="font-size: 11px; color: var(--red); border-color: var(--red);"
+                  hx-post="/api/v1/imports/{{ import_id }}/uncommit"
+                  hx-target="#uncommit-result"
+                  hx-swap="innerHTML"
+                  hx-confirm="Remove all committed observations from this import?">
+            Undo commit
+          </button>
+        </div>
         {% if extraction.test_date %}
         <div style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">Test date: {{ extraction.test_date }}</div>
         {% endif %}
@@ -65,6 +77,78 @@
           </tbody>
         </table>
       </div>
+      {% if skipped_observations %}
+      <div id="commit-skipped-result"></div>
+      <div class="card" style="margin-top: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div class="card-title" style="margin-bottom: 0;">
+            Skipped observations
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">{{ skipped_count }} not committed</span>
+          </div>
+          <button onclick="commitSkipped()" class="btn-primary" style="width: auto; padding: 5px 16px; font-size: 12px;">Commit selected</button>
+        </div>
+        <form id="commit-skipped-form"
+              hx-post="/api/v1/imports/{{ import_id }}/commit"
+              hx-target="#commit-skipped-result"
+              hx-swap="innerHTML">
+          <input type="hidden" name="selected" id="skipped-selected-indices" value="">
+          {% if extraction.test_date %}
+            <input type="hidden" name="test_date" value="{{ extraction.test_date }}">
+          {% else %}
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius);">
+              <label style="font-size: 12px; color: var(--text-secondary); white-space: nowrap;">Test date:</label>
+              <input type="date" name="test_date" value="" style="font-size: 13px; padding: 4px 8px; border-color: var(--amber);" required>
+            </div>
+          {% endif %}
+          <table class="obs-table" style="font-size: 12px;">
+            <thead>
+              <tr>
+                <th style="width:30px;"></th>
+                <th>Marker</th>
+                <th>Value</th>
+                <th>Unit</th>
+                <th>LOINC</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for obs in skipped_observations %}
+              <tr>
+                <td><input type="checkbox" class="skipped-check" data-idx="{{ obs.idx }}"></td>
+                <td style="font-weight: 500;">{{ obs.marker_name }}</td>
+                <td>{{ obs.original_value }}{% if not obs.original_value %}{{ obs.value }}{% endif %}</td>
+                <td>
+                  {{ obs.unit }}
+                  {% if obs.unit != obs.canonical_unit %}
+                    <span class="text-blue" style="font-size: 10px;">&rarr;{{ obs.canonical_value }} {{ obs.canonical_unit }}</span>
+                  {% endif %}
+                </td>
+                <td style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+                <td>
+                  {% if obs.confidence >= 0.85 %}
+                    <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>
+                  {% else %}
+                    <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </form>
+      </div>
+      <script>
+      function commitSkipped() {
+        var indices = [];
+        document.querySelectorAll('.skipped-check:checked').forEach(function(cb) {
+          indices.push(cb.getAttribute('data-idx'));
+        });
+        if (!indices.length) return;
+        document.getElementById('skipped-selected-indices').value = indices.join(',');
+        htmx.trigger(document.getElementById('commit-skipped-form'), 'submit');
+      }
+      </script>
+      {% endif %}
     {% elif import.status == "failed" %}
       <div class="alert alert-error">
         Extraction failed.
