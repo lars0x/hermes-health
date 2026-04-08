@@ -22,19 +22,19 @@ pub type ExtractionSender = mpsc::UnboundedSender<ExtractionJob>;
 /// Recover imports that were interrupted mid-extraction.
 /// Resets "extracting" imports back to "pending" and re-queues all pending imports.
 pub async fn recover_stuck_imports(pool: &SqlitePool, tx: &ExtractionSender) {
-    // Reset any stuck "extracting" imports
-    let reset = sqlx::query("UPDATE imports SET status = 'pending' WHERE status = 'extracting'")
+    // Reset any stuck "extracting" imports back to "queued"
+    let reset = sqlx::query("UPDATE imports SET status = 'queued' WHERE status = 'extracting'")
         .execute(pool)
         .await;
     if let Ok(result) = &reset {
         if result.rows_affected() > 0 {
-            tracing::info!("Reset {} stuck 'extracting' imports to 'pending'", result.rows_affected());
+            tracing::info!("Reset {} stuck 'extracting' imports to 'queued'", result.rows_affected());
         }
     }
 
-    // Re-queue all pending imports
+    // Re-queue all pending/queued imports
     let pending: Vec<(i64, i64)> = sqlx::query_as(
-        "SELECT i.id, i.report_id FROM imports i WHERE i.status = 'pending' ORDER BY i.created_at ASC"
+        "SELECT i.id, i.report_id FROM imports i WHERE i.status IN ('pending', 'queued') ORDER BY i.created_at ASC"
     )
     .fetch_all(pool)
     .await
