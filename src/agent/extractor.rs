@@ -145,17 +145,33 @@ pub async fn run_direct_extraction(
                 let bm = best_bm.unwrap();
                 (bm.loinc_code.clone(), best_score, Some(bm.clone()))
             } else {
-                unresolved.push(UnresolvedMarker {
-                    marker_name: row.marker_name,
-                    value: original_value_str.clone(),
-                    unit: row.unit.clone().unwrap_or_default(),
-                    reason: if best_score > 0.0 {
-                        format!("Best tracked biomarker match {:.0}% below threshold", best_score * 100.0)
+                // 3. Search LOINC catalog (quantitative lab tests only)
+                let candidates = catalog.search_lab(&row.marker_name, 1);
+                if let Some(best) = candidates.first() {
+                    if best.confidence >= 0.85 {
+                        let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &best.loinc_code)
+                            .await
+                            .ok()
+                            .flatten();
+                        (best.loinc_code.clone(), best.confidence, bm)
                     } else {
-                        "No tracked biomarker match".to_string()
-                    },
-                });
-                continue;
+                        unresolved.push(UnresolvedMarker {
+                            marker_name: row.marker_name,
+                            value: original_value_str.clone(),
+                            unit: row.unit.clone().unwrap_or_default(),
+                            reason: format!("Best LOINC catalog match {:.0}% below threshold", best.confidence * 100.0),
+                        });
+                        continue;
+                    }
+                } else {
+                    unresolved.push(UnresolvedMarker {
+                        marker_name: row.marker_name,
+                        value: original_value_str.clone(),
+                        unit: row.unit.clone().unwrap_or_default(),
+                        reason: "No match in tracked biomarkers or LOINC catalog".to_string(),
+                    });
+                    continue;
+                }
             }
         };
 

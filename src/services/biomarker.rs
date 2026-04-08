@@ -35,7 +35,7 @@ pub async fn resolve_biomarker(
     // 3. Search LOINC catalog and auto-create if high confidence match
     let candidates = catalog.search(identifier, 1);
     if let Some(candidate) = candidates.first() {
-        if candidate.confidence >= 0.95 {
+        if candidate.confidence >= 0.85 {
             // Check if this LOINC code is already tracked
             if let Some(bm) = queries::get_biomarker_by_loinc(pool, &candidate.loinc_code).await? {
                 return Ok(bm);

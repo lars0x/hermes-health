@@ -8,6 +8,7 @@ use std::collections::HashMap;
 struct LoincData;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LoincEntry {
     pub loinc_num: String,
     pub component: String,
@@ -50,7 +51,7 @@ pub struct LoincCatalog {
     entries: Vec<LoincEntry>,
     by_code: HashMap<String, usize>,
     by_name_lower: HashMap<String, Vec<usize>>,
-    aliases: HashMap<String, Vec<(String, String)>>, // loinc_code -> [(alias, loinc_code)]
+    _aliases: HashMap<String, Vec<(String, String)>>, // loinc_code -> [(alias, loinc_code)]
     alias_lookup: HashMap<String, Vec<usize>>,       // lowercase alias -> entry indices
 }
 
@@ -142,7 +143,7 @@ impl LoincCatalog {
             entries,
             by_code,
             by_name_lower,
-            aliases,
+            _aliases: aliases,
             alias_lookup,
         }
     }
@@ -241,13 +242,14 @@ impl LoincCatalog {
     }
 
     /// Search specifically for quantitative lab tests (Qn scale type, Ser/Plas system)
+    #[allow(dead_code)]
     pub fn search_lab(&self, query: &str, max_results: usize) -> Vec<LoincCandidate> {
         let all = self.search(query, max_results * 3);
         all.into_iter()
             .filter(|c| {
                 if let Some(entry) = self.get_by_code(&c.loinc_code) {
                     entry.scale_typ == "Qn"
-                        && (entry.system.contains("Ser") || entry.system.contains("Plas") || entry.system.contains("Bld"))
+                        && (entry.system.contains("Ser") || entry.system.contains("Plas") || entry.system.contains("Bld") || entry.system.contains("Ur"))
                 } else {
                     false
                 }
