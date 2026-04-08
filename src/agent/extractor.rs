@@ -119,27 +119,25 @@ pub async fn run_direct_extraction(
         marker_name: String,
         value: f64,
         original_value: String,
-        is_qualitative: bool,
         unit: String,
         specimen: Option<String>,
     }
 
     let mut parsed_rows: Vec<ParsedRow> = Vec::new();
     for row in rows {
-        let (value, original_value_str, is_qualitative) = match &row.value {
+        let (value, original_value_str) = match &row.value {
             serde_json::Value::Number(n) => {
                 let v = n.as_f64().unwrap_or(0.0);
-                (v, v.to_string(), false)
+                (v, v.to_string())
             }
-            serde_json::Value::String(s) => (0.0, s.clone(), true),
+            serde_json::Value::String(s) => (0.0, s.clone()),
             serde_json::Value::Null => continue,
-            other => (0.0, other.to_string(), true),
+            other => (0.0, other.to_string()),
         };
         parsed_rows.push(ParsedRow {
             marker_name: row.marker_name,
             value,
             original_value: original_value_str,
-            is_qualitative,
             unit: row.unit.unwrap_or_default(),
             specimen: row.specimen,
         });
@@ -232,30 +230,14 @@ pub async fn run_direct_extraction(
             }
         };
 
-        // Unit normalization
-        let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &loinc_code)
-            .await.ok().flatten();
-        let (canonical_value, canonical_unit) = if row.is_qualitative {
-            (row.value, row.unit.clone())
-        } else if let Some(ref b) = bm {
-            match normalize::normalize_observation(
-                &pool, b.id, &b.unit, &row.original_value, &row.unit,
-            ).await {
-                Ok(norm) => (norm.value, norm.canonical_unit),
-                Err(_) => (row.value, row.unit.clone()),
-            }
-        } else {
-            (row.value, row.unit.clone())
-        };
-
         observations.push(ExtractedObservation {
             marker_name: row.marker_name,
             loinc_code,
             value: row.value,
-            original_value: row.original_value,
-            unit: row.unit,
-            canonical_unit,
-            canonical_value,
+            original_value: row.original_value.clone(),
+            unit: row.unit.clone(),
+            canonical_unit: row.unit,
+            canonical_value: row.value,
             confidence,
             detection_limit: None,
             specimen: row.specimen,
@@ -292,7 +274,7 @@ pub async fn run_direct_extraction(
 /// - All entries have different units (after normalization)
 fn dedup_unit_variants(
     catalog: &LoincCatalog,
-    mut observations: Vec<ExtractedObservation>,
+    observations: Vec<ExtractedObservation>,
 ) -> Vec<ExtractedObservation> {
     use crate::ingest::units;
     use std::collections::{HashMap, HashSet};
@@ -304,10 +286,7 @@ fn dedup_unit_variants(
     }
 
     let mut remove: HashSet<usize> = HashSet::new();
-    // Deferred canonical updates for tier 3 scale conversions (applied after borrow ends)
-    let mut scale_updates: Vec<(usize, f64, String)> = Vec::new();
 
-    // Use owned keys to avoid borrowing observations for the HashMap
     let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, obs) in observations.iter().enumerate() {
         groups.entry(obs.loinc_code.clone()).or_default().push(i);
@@ -340,23 +319,20 @@ fn dedup_unit_variants(
         let canonical_unit = units::normalize_unit(&loinc_entry.example_ucum_units);
 
         // Score each observation: (tier, sig_figs) - lower tier is better, higher sig_figs is better
-        let mut candidates: Vec<(usize, u8, usize, Option<f64>)> = Vec::new();
+        // Tier 1: original unit already matches LOINC canonical (no conversion needed at commit)
+        // Tier 2: scale-convertible to canonical (same mass prefix, different volume)
+        let mut candidates: Vec<(usize, u8, usize)> = Vec::new();
 
         for (pos, &idx) in indices.iter().enumerate() {
             let obs = &observations[idx];
             let sig_figs = normalize::significant_figures(&obs.original_value);
 
             if normalized_units[pos] == canonical_unit {
-                // Tier 1: original unit matches canonical
-                candidates.push((idx, 1, sig_figs, None));
-            } else if units::normalize_unit(&obs.canonical_unit) == canonical_unit {
-                // Tier 2: normalization pipeline already converted to canonical
-                candidates.push((idx, 2, sig_figs, None));
-            } else if let Some((converted, _precision)) = try_scale_convert(
+                candidates.push((idx, 1, sig_figs));
+            } else if try_scale_convert(
                 obs.value, &obs.original_value, &normalized_units[pos], &canonical_unit,
-            ) {
-                // Tier 3: simple scale conversion (same mass prefix, different volume)
-                candidates.push((idx, 3, sig_figs, Some(converted)));
+            ).is_some() {
+                candidates.push((idx, 2, sig_figs));
             }
         }
 
@@ -369,17 +345,9 @@ fn dedup_unit_variants(
         let keep_idx = candidates[0].0;
         let keep_tier = candidates[0].1;
 
-        // If tier 3 winner, queue canonical update
-        if keep_tier == 3 {
-            if let Some(converted) = candidates[0].3 {
-                scale_updates.push((keep_idx, converted, canonical_unit.clone()));
-            }
-        }
-
         let tier_label = match keep_tier {
             1 => "exact",
-            2 => "converted",
-            3 => "scale-converted",
+            2 => "scale-convertible",
             _ => "unknown",
         };
 
@@ -395,12 +363,6 @@ fn dedup_unit_variants(
                 remove.insert(idx);
             }
         }
-    }
-
-    // Apply deferred scale conversions
-    for (idx, converted, unit) in scale_updates {
-        observations[idx].canonical_value = converted;
-        observations[idx].canonical_unit = unit;
     }
 
     if !remove.is_empty() {
