@@ -330,6 +330,17 @@ mod tests {
     }
 
     #[test]
+    fn test_search_sodium_raw() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.search("Sodium", 30);
+        for r in &results {
+            let entry = catalog.get_by_code(&r.loinc_code).unwrap();
+            println!("{} | {} | scale={} sys={} | conf={}", r.loinc_code, r.canonical_name, entry.scale_typ, entry.system, r.confidence);
+        }
+        assert!(!results.is_empty());
+    }
+
+    #[test]
     fn test_search_lab_sodium_no_specimen() {
         let catalog = LoincCatalog::load();
         let results = catalog.search_lab("Sodium", 3, None);

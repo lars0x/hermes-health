@@ -36,6 +36,8 @@ pub struct UnresolvedMarker {
     pub value: String,
     pub unit: String,
     pub reason: String,
+    #[serde(default)]
+    pub specimen: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -143,6 +143,7 @@ impl Tool for SubmitResultsTool {
                 value: u.value,
                 unit: u.unit,
                 reason: u.reason,
+                specimen: None,
             })
             .collect();
 

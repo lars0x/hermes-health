@@ -150,11 +150,23 @@ pub async fn run_direct_extraction(
 
             if best_score >= fuzzy_threshold {
                 let bm = best_bm.unwrap();
+                tracing::info!(
+                    "Tier 2 fuzzy match: '{}' -> '{}' ({}) at {:.0}%",
+                    row.marker_name, bm.name, bm.loinc_code, best_score * 100.0
+                );
                 (bm.loinc_code.clone(), best_score, Some(bm.clone()))
             } else {
                 // 3. Search LOINC catalog (quantitative lab tests only, filtered by specimen if available)
+                tracing::info!(
+                    "Tier 3 catalog search: '{}' (specimen: {:?}, fuzzy best was {:.0}%)",
+                    row.marker_name, row.specimen, best_score * 100.0
+                );
                 let candidates = catalog.search_lab(&row.marker_name, 1, row.specimen.as_deref());
                 if let Some(best) = candidates.first() {
+                    tracing::info!(
+                        "Tier 3 result: '{}' -> {} '{}' at {:.0}%",
+                        row.marker_name, best.loinc_code, best.canonical_name, best.confidence * 100.0
+                    );
                     if best.confidence >= 0.85 {
                         let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &best.loinc_code)
                             .await
@@ -167,6 +179,7 @@ pub async fn run_direct_extraction(
                             value: original_value_str.clone(),
                             unit: row.unit.clone().unwrap_or_default(),
                             reason: format!("Best LOINC catalog match {:.0}% below threshold", best.confidence * 100.0),
+                            specimen: row.specimen.clone(),
                         });
                         continue;
                     }
@@ -176,6 +189,7 @@ pub async fn run_direct_extraction(
                         value: original_value_str.clone(),
                         unit: row.unit.clone().unwrap_or_default(),
                         reason: "No match in tracked biomarkers or LOINC catalog".to_string(),
+                        specimen: row.specimen.clone(),
                     });
                     continue;
                 }
