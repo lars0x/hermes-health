@@ -50,6 +50,79 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Migration 004: import_overwrites table
     sqlx::raw_sql(OVERWRITES_SQL).execute(pool).await?;
 
+    // Migration 005: fix calculated biomarker LOINC codes (fake -> real)
+    let loinc_fixes = [
+        ("T.Chol/HDL", "32309-7"),
+        ("A/G", "1759-0"),
+        ("eGFR", "98979-8"),
+        ("TG/HDL", "44733-4"),
+    ];
+    for (old_code, new_code) in &loinc_fixes {
+        // Only migrate if old code exists and new code doesn't
+        let old_exists: bool = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM biomarkers WHERE loinc_code = ?"
+        )
+        .bind(old_code)
+        .fetch_one(pool)
+        .await
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+        let new_exists: bool = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM biomarkers WHERE loinc_code = ?"
+        )
+        .bind(new_code)
+        .fetch_one(pool)
+        .await
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+        if old_exists && !new_exists {
+            sqlx::query("UPDATE biomarkers SET loinc_code = ? WHERE loinc_code = ?")
+                .bind(new_code)
+                .bind(old_code)
+                .execute(pool)
+                .await?;
+            tracing::info!("Migrated biomarker LOINC code {} -> {}", old_code, new_code);
+        }
+
+        // Also fix observations referencing the old code via their biomarker_id
+        // (observations point to biomarker by id, so they follow automatically)
+
+        // Fix raw_extraction JSON in imports
+        let imports_with_old: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT id, raw_extraction FROM imports WHERE raw_extraction LIKE ?"
+        )
+        .bind(format!("%{}%", old_code))
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        for (import_id, json) in &imports_with_old {
+            let updated = json.replace(old_code, new_code);
+            sqlx::query("UPDATE imports SET raw_extraction = ? WHERE id = ?")
+                .bind(&updated)
+                .bind(import_id)
+                .execute(pool)
+                .await?;
+            tracing::info!("Updated import {} extraction JSON: {} -> {}", import_id, old_code, new_code);
+        }
+    }
+
+    // Migration 006: add llm_log column to imports
+    let has_llm_log: bool = sqlx::query_scalar::<_, i32>(
+        "SELECT COUNT(*) FROM pragma_table_info('imports') WHERE name = 'llm_log'"
+    )
+    .fetch_one(pool)
+    .await
+    .map(|c| c > 0)
+    .unwrap_or(false);
+    if !has_llm_log {
+        sqlx::raw_sql("ALTER TABLE imports ADD COLUMN llm_log TEXT")
+            .execute(pool)
+            .await?;
+    }
+
     tracing::info!("Database migrations applied");
     Ok(())
 }

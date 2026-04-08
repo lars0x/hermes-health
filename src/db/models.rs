@@ -80,6 +80,7 @@ pub struct Import {
     pub extracted_count: Option<i64>,
     pub unresolved_count: Option<i64>,
     pub test_date: Option<String>,
+    pub llm_log: Option<String>,
     pub created_at: String,
 }
 

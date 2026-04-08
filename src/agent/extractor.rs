@@ -26,7 +26,7 @@ pub async fn run_direct_extraction(
     catalog: Arc<LoincCatalog>,
     config: Arc<HermesConfig>,
     raw_text: &str,
-) -> Result<ExtractionResult> {
+) -> Result<(ExtractionResult, Vec<crate::agent::LlmLogEntry>)> {
     tracing::info!("Running direct extraction with model {}", config.ollama.model);
 
     // Truncate to avoid context length issues (find a valid UTF-8 boundary)
@@ -85,8 +85,13 @@ pub async fn run_direct_extraction(
         .and_then(|v| v.as_str())
         .ok_or_else(|| HermesError::Agent(format!("No message content in Ollama response: {}", body)))?;
 
-    tracing::info!("Ollama returned {} chars, first 200: {:?}", response_text.len(), &response_text[..response_text.len().min(200)]);
-    let _ = std::fs::write("/tmp/hermes-raw-response.json", response_text);
+    tracing::info!("Ollama returned {} chars", response_text.len());
+
+    let mut llm_log = vec![crate::agent::LlmLogEntry {
+        step: "extraction".to_string(),
+        prompt: prompt.clone(),
+        response: response_text.to_string(),
+    }];
 
     // Parse the JSON response - handle both array and object-with-array formats
     let rows = parse_extraction_response(response_text)?;
@@ -212,24 +217,31 @@ pub async fn run_direct_extraction(
         if !unresolved.is_empty() && !tracked.is_empty() {
             llm_resolve_markers(&client, &config, &tracked, &pool, unresolved).await
         } else {
-            (vec![], unresolved)
+            (vec![], unresolved, None)
         }
     };
 
     let date_future = llm_extract_test_date(&client, &config, raw_text);
 
-    let ((resolved, still_unresolved), test_date) =
+    let ((resolved, still_unresolved, resolve_log), (test_date, date_log)) =
         tokio::join!(resolve_future, date_future);
+
+    if let Some(entry) = resolve_log {
+        llm_log.push(entry);
+    }
+    if let Some(entry) = date_log {
+        llm_log.push(entry);
+    }
 
     observations.extend(resolved);
 
-    Ok(ExtractionResult {
+    Ok((ExtractionResult {
         observations,
         unresolved: still_unresolved,
         model_used: config.ollama.model.clone(),
         agent_turns: 1,
         test_date,
-    })
+    }, llm_log))
 }
 
 /// Use the LLM to map unresolved marker names to tracked biomarkers.
@@ -240,7 +252,7 @@ async fn llm_resolve_markers(
     tracked: &[crate::db::models::Biomarker],
     pool: &SqlitePool,
     unresolved: Vec<UnresolvedMarker>,
-) -> (Vec<ExtractedObservation>, Vec<UnresolvedMarker>) {
+) -> (Vec<ExtractedObservation>, Vec<UnresolvedMarker>, Option<crate::agent::LlmLogEntry>) {
     // Build the list of known biomarker names for the prompt
     let known_list: Vec<String> = tracked
         .iter()
@@ -279,7 +291,7 @@ async fn llm_resolve_markers(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("LLM marker resolution request failed: {e}");
-            return (vec![], unresolved);
+            return (vec![], unresolved, None);
         }
     };
 
@@ -287,7 +299,7 @@ async fn llm_resolve_markers(
         Ok(b) => b,
         Err(e) => {
             tracing::warn!("Failed to parse LLM resolution response: {e}");
-            return (vec![], unresolved);
+            return (vec![], unresolved, None);
         }
     };
 
@@ -296,6 +308,12 @@ async fn llm_resolve_markers(
         .and_then(|m| m.get("content"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
+
+    let log_entry = crate::agent::LlmLogEntry {
+        step: "resolve_markers".to_string(),
+        prompt: prompt.clone(),
+        response: response_text.to_string(),
+    };
 
     // Strip markdown fences
     let cleaned = if response_text.trim().starts_with("```") {
@@ -340,7 +358,7 @@ async fn llm_resolve_markers(
                 }
             } else {
                 tracing::warn!("Could not parse LLM resolution response");
-                return (vec![], unresolved);
+                return (vec![], unresolved, Some(log_entry));
             }
         }
     };
@@ -392,7 +410,7 @@ async fn llm_resolve_markers(
     }
 
     tracing::info!("LLM resolution: {} resolved, {} still unresolved", resolved.len(), still_unresolved.len());
-    (resolved, still_unresolved)
+    (resolved, still_unresolved, Some(log_entry))
 }
 
 /// Extract the test/specimen collection date from the lab report via a dedicated LLM call.
@@ -401,7 +419,7 @@ async fn llm_extract_test_date(
     client: &reqwest::Client,
     config: &HermesConfig,
     raw_text: &str,
-) -> Option<String> {
+) -> (Option<String>, Option<crate::agent::LlmLogEntry>) {
     // Only send the first 2000 chars - the date is usually near the top
     let text = if raw_text.len() > 2000 { &raw_text[..2000] } else { raw_text };
 
@@ -410,7 +428,7 @@ async fn llm_extract_test_date(
         text
     );
 
-    let response = client
+    let response = match client
         .post(format!("{}/api/chat", config.ollama.url))
         .json(&serde_json::json!({
             "model": config.ollama.model,
@@ -428,14 +446,27 @@ async fn llm_extract_test_date(
             }
         }))
         .send()
-        .await
-        .ok()?;
+        .await {
+            Ok(r) => r,
+            Err(_) => return (None, None),
+        };
 
-    let body: serde_json::Value = response.json().await.ok()?;
-    let content = body.get("message")?.get("content")?.as_str()?;
+    let body: serde_json::Value = match response.json().await {
+        Ok(b) => b,
+        Err(_) => return (None, None),
+    };
 
-    // Debug: log the raw response
-    let _ = std::fs::write("/tmp/hermes-date-response.json", content);
+    let content = match body.get("message").and_then(|m| m.get("content")).and_then(|v| v.as_str()) {
+        Some(c) => c,
+        None => return (None, None),
+    };
+
+    let log_entry = crate::agent::LlmLogEntry {
+        step: "extract_date".to_string(),
+        prompt: prompt.clone(),
+        response: content.to_string(),
+    };
+
     tracing::info!("Date extraction LLM response: {}", &content[..content.len().min(200)]);
 
     // Strip markdown fences
@@ -447,17 +478,23 @@ async fn llm_extract_test_date(
         content.trim()
     };
 
-    let parsed: serde_json::Value = serde_json::from_str(cleaned).ok()?;
-    let date = parsed.get("test_date")?.as_str()?;
+    let parsed: serde_json::Value = match serde_json::from_str(cleaned) {
+        Ok(v) => v,
+        Err(_) => return (None, Some(log_entry)),
+    };
+    let date = match parsed.get("test_date").and_then(|v| v.as_str()) {
+        Some(d) => d,
+        None => return (None, Some(log_entry)),
+    };
     let source = parsed.get("source_field").and_then(|v| v.as_str()).unwrap_or("unknown");
     let reasoning = parsed.get("reasoning").and_then(|v| v.as_str()).unwrap_or("");
 
     if date.is_empty() || date == "null" {
         tracing::info!("Test date not found in report. Reasoning: {}", reasoning);
-        None
+        (None, Some(log_entry))
     } else {
         tracing::info!("Extracted test date: {} (from: {}, reasoning: {})", date, source, reasoning);
-        Some(date.to_string())
+        (Some(date.to_string()), Some(log_entry))
     }
 }
 

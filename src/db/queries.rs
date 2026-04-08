@@ -420,9 +420,10 @@ pub async fn update_import_result(
     extracted_count: i64,
     unresolved_count: i64,
     test_date: Option<&str>,
+    llm_log: Option<&str>,
 ) -> Result<()> {
     sqlx::query(
-        "UPDATE imports SET status = ?, raw_extraction = ?, agent_turns = ?, extracted_count = ?, unresolved_count = ?, test_date = ? WHERE id = ?"
+        "UPDATE imports SET status = ?, raw_extraction = ?, agent_turns = ?, extracted_count = ?, unresolved_count = ?, test_date = ?, llm_log = ? WHERE id = ?"
     )
     .bind(status)
     .bind(raw_extraction)
@@ -430,6 +431,7 @@ pub async fn update_import_result(
     .bind(extracted_count)
     .bind(unresolved_count)
     .bind(test_date)
+    .bind(llm_log)
     .bind(id)
     .execute(pool)
     .await?;

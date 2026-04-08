@@ -162,5 +162,30 @@
       </div>
     {% endif %}
   </div>
+
+  {% if import.llm_log %}
+  <div class="card" style="margin-top: 12px;">
+    <details>
+      <summary style="cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary);">
+        LLM Log ({{ llm_log_entries|length }} calls)
+      </summary>
+      <div style="margin-top: 12px;">
+        {% for entry in llm_log_entries %}
+        <div style="margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+          <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px;">{{ entry.step }}</div>
+          <div style="margin-bottom: 8px;">
+            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 2px;">Prompt</div>
+            <pre style="font-size: 11px; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{{ entry.prompt }}</pre>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 2px;">Response</div>
+            <pre style="font-size: 11px; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{{ entry.response }}</pre>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -47,7 +47,7 @@ pub fn start_worker(
                     Err(e) => {
                         let error_json = serde_json::json!({"error": format!("PDF extraction failed: {}", e)}).to_string();
                         let _ = queries::update_import_result(
-                            &pool, job.import_id, "failed", Some(&error_json), 0, 0, 0, None,
+                            &pool, job.import_id, "failed", Some(&error_json), 0, 0, 0, None, None,
                         ).await;
                         tracing::error!("Import {} PDF extraction failed: {}", job.import_id, e);
                         continue;
@@ -59,7 +59,7 @@ pub fn start_worker(
                     Err(e) => {
                         let error_json = serde_json::json!({"error": format!("File read failed: {}", e)}).to_string();
                         let _ = queries::update_import_result(
-                            &pool, job.import_id, "failed", Some(&error_json), 0, 0, 0, None,
+                            &pool, job.import_id, "failed", Some(&error_json), 0, 0, 0, None, None,
                         ).await;
                         continue;
                     }
@@ -77,14 +77,16 @@ pub fn start_worker(
             }).await;
 
             match result {
-                Ok(Ok(extraction)) => {
+                Ok(Ok((extraction, llm_log))) => {
                     let json = serde_json::to_string(&extraction).unwrap_or_default();
+                    let log_json = serde_json::to_string(&llm_log).ok();
                     let _ = queries::update_import_result(
                         &pool, import_id, "extracted", Some(&json),
                         extraction.agent_turns as i64,
                         extraction.observations.len() as i64,
                         extraction.unresolved.len() as i64,
                         extraction.test_date.as_deref(),
+                        log_json.as_deref(),
                     ).await;
                     tracing::info!(
                         "Import {} complete: {} observations, {} unresolved",
@@ -94,14 +96,14 @@ pub fn start_worker(
                 Ok(Err(e)) => {
                     let error_json = serde_json::json!({"error": e.to_string()}).to_string();
                     let _ = queries::update_import_result(
-                        &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None,
+                        &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None, None,
                     ).await;
                     tracing::error!("Import {} extraction failed: {}", import_id, e);
                 }
                 Err(e) => {
                     let error_json = serde_json::json!({"error": format!("Extraction task crashed: {}", e)}).to_string();
                     let _ = queries::update_import_result(
-                        &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None,
+                        &pool, import_id, "failed", Some(&error_json), 0, 0, 0, None, None,
                     ).await;
                     tracing::error!("Import {} extraction task panicked: {}", import_id, e);
                 }

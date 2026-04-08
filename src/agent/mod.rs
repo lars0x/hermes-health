@@ -38,6 +38,13 @@ pub struct UnresolvedMarker {
     pub reason: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmLogEntry {
+    pub step: String,
+    pub prompt: String,
+    pub response: String,
+}
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -52,10 +59,13 @@ pub async fn run_extraction(
     catalog: Arc<LoincCatalog>,
     config: Arc<HermesConfig>,
     raw_text: &str,
-) -> Result<ExtractionResult> {
+) -> Result<(ExtractionResult, Vec<LlmLogEntry>)> {
     match config.extraction.mode.as_str() {
         "direct" => extractor::run_direct_extraction(pool, catalog, config, raw_text).await,
-        _ => run_agentic_extraction(pool, catalog, config, raw_text).await,
+        _ => {
+            let result = run_agentic_extraction(pool, catalog, config, raw_text).await?;
+            Ok((result, vec![]))  // Agentic mode doesn't collect logs yet
+        }
     }
 }
 

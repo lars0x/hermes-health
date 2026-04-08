@@ -305,6 +305,10 @@ pub async fn import_detail(
 
     let skipped_count = skipped_observations.len();
 
+    let llm_log_entries: Vec<serde_json::Value> = import.llm_log.as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
         current_path => format!("/imports/{}", id),
@@ -322,6 +326,7 @@ pub async fn import_detail(
         dismissed_count => dismissed_count,
         skipped_observations => skipped_observations,
         skipped_count => skipped_count,
+        llm_log_entries => llm_log_entries,
     };
     state.templates.render("pages/import_detail.html", ctx).map(Html)
 }
