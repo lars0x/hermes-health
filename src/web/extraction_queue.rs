@@ -19,6 +19,45 @@ pub struct ExtractionJob {
 /// Sender handle for submitting extraction jobs
 pub type ExtractionSender = mpsc::UnboundedSender<ExtractionJob>;
 
+/// Recover imports that were interrupted mid-extraction.
+/// Resets "extracting" imports back to "pending" and re-queues all pending imports.
+pub async fn recover_stuck_imports(pool: &SqlitePool, tx: &ExtractionSender) {
+    // Reset any stuck "extracting" imports
+    let reset = sqlx::query("UPDATE imports SET status = 'pending' WHERE status = 'extracting'")
+        .execute(pool)
+        .await;
+    if let Ok(result) = &reset {
+        if result.rows_affected() > 0 {
+            tracing::info!("Reset {} stuck 'extracting' imports to 'pending'", result.rows_affected());
+        }
+    }
+
+    // Re-queue all pending imports
+    let pending: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT i.id, i.report_id FROM imports i WHERE i.status = 'pending' ORDER BY i.created_at ASC"
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for (import_id, report_id) in pending {
+        let report = match queries::get_report_by_id(pool, report_id).await {
+            Ok(r) => r,
+            Err(_) => {
+                tracing::warn!("Skipping pending import {}: report {} not found", import_id, report_id);
+                continue;
+            }
+        };
+        let _ = tx.send(ExtractionJob {
+            import_id,
+            report_id,
+            file_path: report.file_path,
+            format: report.format,
+        });
+        tracing::info!("Re-queued pending import {} for report '{}'", import_id, report.filename);
+    }
+}
+
 /// Start the extraction worker. Returns a sender for submitting jobs.
 /// The worker processes one job at a time, sequentially.
 pub fn start_worker(
@@ -37,8 +76,12 @@ pub fn start_worker(
                 job.import_id, job.report_id, job.file_path
             );
 
-            // Update status to extracting
+            // Update status to extracting and record start time
             let _ = queries::update_import_status(&pool, job.import_id, "extracting").await;
+            let _ = sqlx::query("UPDATE imports SET started_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?")
+                .bind(job.import_id)
+                .execute(&pool)
+                .await;
 
             // Extract text from file
             let raw_text = if job.format == "pdf" {

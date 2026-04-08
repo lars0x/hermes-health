@@ -109,18 +109,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         }
     }
 
-    // Migration 006: add completed_at column to imports
-    let has_completed_at: bool = sqlx::query_scalar::<_, i32>(
-        "SELECT COUNT(*) FROM pragma_table_info('imports') WHERE name = 'completed_at'"
-    )
-    .fetch_one(pool)
-    .await
-    .map(|c| c > 0)
-    .unwrap_or(false);
-    if !has_completed_at {
-        sqlx::raw_sql("ALTER TABLE imports ADD COLUMN completed_at TEXT")
-            .execute(pool)
-            .await?;
+    // Migration 006: add started_at and completed_at columns to imports
+    for col in ["started_at", "completed_at"] {
+        let exists: bool = sqlx::query_scalar::<_, i32>(
+            &format!("SELECT COUNT(*) FROM pragma_table_info('imports') WHERE name = '{}'", col)
+        )
+        .fetch_one(pool)
+        .await
+        .map(|c| c > 0)
+        .unwrap_or(false);
+        if !exists {
+            sqlx::raw_sql(&format!("ALTER TABLE imports ADD COLUMN {} TEXT", col))
+                .execute(pool)
+                .await?;
+        }
     }
 
     // Migration 007: add llm_log column to imports

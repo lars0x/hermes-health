@@ -365,7 +365,7 @@ The tool uses word matching, so search for the words that describe the test. Abb
    - MCHC -> search "Mean corpuscular hemoglobin concentration"
    - RBC -> search "Erythrocytes"
    - WBC -> search "Leukocytes"
-   - RDW -> search "Red cell distribution width"
+   - RDW -> search "RDW" or "Erythrocyte distribution width" (NOT reticulocyte)
    - MPV -> search "Mean platelet volume"
    - ESR -> search "Erythrocyte sedimentation rate"
    - ALT/SGPT -> search "Alanine aminotransferase"

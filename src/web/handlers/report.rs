@@ -16,11 +16,11 @@ use crate::web::AppState;
 // --- Import list page ---
 
 /// Format duration between two ISO 8601 timestamps as "XmXs".
-fn format_duration(created: &str, completed: &str) -> String {
+fn format_duration(started: &str, completed: &str) -> String {
     let parse = |s: &str| -> Option<chrono::NaiveDateTime> {
         chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%SZ").ok()
     };
-    if let (Some(start), Some(end)) = (parse(created), parse(completed)) {
+    if let (Some(start), Some(end)) = (parse(started), parse(completed)) {
         let secs = (end - start).num_seconds().max(0);
         let mins = secs / 60;
         let rem = secs % 60;
@@ -45,9 +45,10 @@ async fn enrich_imports(pool: &sqlx::SqlitePool, imports: &[crate::db::models::I
         } else {
             0
         };
-        let duration = imp.completed_at.as_deref()
-            .map(|c| format_duration(&imp.created_at, c))
-            .unwrap_or_default();
+        let duration = match (imp.started_at.as_deref(), imp.completed_at.as_deref()) {
+            (Some(s), Some(c)) => format_duration(s, c),
+            _ => String::new(),
+        };
         rows.push(minijinja::context! {
             id => imp.id,
             filename => report.as_ref().map(|r| r.filename.clone()).unwrap_or_default(),
@@ -333,9 +334,10 @@ pub async fn import_detail(
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default();
 
-    let duration = import.completed_at.as_deref()
-        .map(|c| format_duration(&import.created_at, c))
-        .unwrap_or_default();
+    let duration = match (import.started_at.as_deref(), import.completed_at.as_deref()) {
+        (Some(s), Some(c)) => format_duration(s, c),
+        _ => String::new(),
+    };
 
     let ctx = minijinja::context! {
         is_fragment => is_htmx,

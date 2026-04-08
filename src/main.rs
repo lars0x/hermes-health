@@ -296,6 +296,8 @@ async fn main() -> anyhow::Result<()> {
                 config.clone(),
             );
 
+            web::extraction_queue::recover_stuck_imports(&pool, &extraction_queue).await;
+
             let state = web::AppState {
                 pool,
                 catalog,

@@ -82,6 +82,7 @@ pub struct Import {
     pub test_date: Option<String>,
     pub llm_log: Option<String>,
     pub created_at: String,
+    pub started_at: Option<String>,
     pub completed_at: Option<String>,
 }
 
