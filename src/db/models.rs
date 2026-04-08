@@ -146,6 +146,7 @@ pub struct NewObservation {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct ImportOverwrite {
     pub id: i64,
     pub import_id: i64,

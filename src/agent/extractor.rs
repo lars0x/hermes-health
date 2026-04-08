@@ -491,7 +491,7 @@ Confidence guide:
     let max_turns = config.extraction.resolve_max_turns;
     let mut turn = 0u32;
     let mut total_tool_calls = 0u32;
-    let mut final_content = String::new();
+    let mut final_content;
     let mut query_cache: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
 
     loop {
