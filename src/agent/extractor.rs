@@ -278,16 +278,21 @@ pub async fn run_direct_extraction(
 /// Auto-deduplicate unit-variant observations.
 ///
 /// Singapore lab reports often list the same measurement in both SI and conventional units.
-/// When we detect this pattern (same LOINC code, same marker name, different units), we keep
-/// the observation whose unit matches the biomarker's canonical unit (zero conversion error).
+/// When we detect this pattern (same LOINC code, same marker name, different units), we pick
+/// the best observation using a tiered strategy:
 ///
-/// Safety checks - all must pass for auto-dedup:
-/// 1. All entries in the group have the same marker_name (case-insensitive)
-/// 2. All entries have different units (after normalization)
-/// 3. At least one entry's unit matches the LOINC catalog's canonical unit
+/// 1. Original unit matches LOINC canonical (zero conversion error)
+/// 2. Already converted to canonical by normalization pipeline (canonical_unit matches)
+/// 3. Simple scale conversion possible (same mass prefix, different volume: ng/mL -> ng/dL)
+///
+/// Among observations at the same tier, prefer more significant figures (higher precision).
+///
+/// Safety checks before attempting dedup:
+/// - All entries in the group have the same marker_name (case-insensitive)
+/// - All entries have different units (after normalization)
 fn dedup_unit_variants(
     catalog: &LoincCatalog,
-    observations: Vec<ExtractedObservation>,
+    mut observations: Vec<ExtractedObservation>,
 ) -> Vec<ExtractedObservation> {
     use crate::ingest::units;
     use std::collections::{HashMap, HashSet};
@@ -299,6 +304,14 @@ fn dedup_unit_variants(
     }
 
     let mut remove: HashSet<usize> = HashSet::new();
+    // Deferred canonical updates for tier 3 scale conversions (applied after borrow ends)
+    let mut scale_updates: Vec<(usize, f64, String)> = Vec::new();
+
+    // Use owned keys to avoid borrowing observations for the HashMap
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, obs) in observations.iter().enumerate() {
+        groups.entry(obs.loinc_code.clone()).or_default().push(i);
+    }
 
     for (loinc_code, indices) in &groups {
         if indices.len() < 2 {
@@ -320,27 +333,60 @@ fn dedup_unit_variants(
             continue; // Some share a unit - genuine duplicate, leave for human review
         }
 
-        // Safety check 3: find the observation matching the LOINC catalog's canonical unit
         let loinc_entry = match catalog.get_by_code(loinc_code) {
             Some(entry) => entry,
             None => continue,
         };
         let canonical_unit = units::normalize_unit(&loinc_entry.example_ucum_units);
 
-        let keep_idx = indices.iter().enumerate()
-            .find(|(i, _)| normalized_units[*i] == canonical_unit)
-            .map(|(_, &idx)| idx);
+        // Score each observation: (tier, sig_figs) - lower tier is better, higher sig_figs is better
+        let mut candidates: Vec<(usize, u8, usize, Option<f64>)> = Vec::new();
 
-        let keep_idx = match keep_idx {
-            Some(idx) => idx,
-            None => continue, // No observation matches canonical - leave for human review
+        for (pos, &idx) in indices.iter().enumerate() {
+            let obs = &observations[idx];
+            let sig_figs = normalize::significant_figures(&obs.original_value);
+
+            if normalized_units[pos] == canonical_unit {
+                // Tier 1: original unit matches canonical
+                candidates.push((idx, 1, sig_figs, None));
+            } else if units::normalize_unit(&obs.canonical_unit) == canonical_unit {
+                // Tier 2: normalization pipeline already converted to canonical
+                candidates.push((idx, 2, sig_figs, None));
+            } else if let Some((converted, _precision)) = try_scale_convert(
+                obs.value, &obs.original_value, &normalized_units[pos], &canonical_unit,
+            ) {
+                // Tier 3: simple scale conversion (same mass prefix, different volume)
+                candidates.push((idx, 3, sig_figs, Some(converted)));
+            }
+        }
+
+        if candidates.is_empty() {
+            continue; // No observation can reach canonical - leave for human review
+        }
+
+        // Pick best: lowest tier, then highest sig_figs
+        candidates.sort_by(|a, b| a.1.cmp(&b.1).then(b.2.cmp(&a.2)));
+        let keep_idx = candidates[0].0;
+        let keep_tier = candidates[0].1;
+
+        // If tier 3 winner, queue canonical update
+        if keep_tier == 3 {
+            if let Some(converted) = candidates[0].3 {
+                scale_updates.push((keep_idx, converted, canonical_unit.clone()));
+            }
+        }
+
+        let tier_label = match keep_tier {
+            1 => "exact",
+            2 => "converted",
+            3 => "scale-converted",
+            _ => "unknown",
         };
 
-        // Remove all others in this group
         for &idx in indices {
             if idx != keep_idx {
                 tracing::info!(
-                    "Auto-dedup: {} '{}' - keeping {} {} (canonical), dropping {} {}",
+                    "Auto-dedup: {} '{}' - keeping {} {} ({tier_label}), dropping {} {}",
                     loinc_code,
                     observations[keep_idx].marker_name,
                     observations[keep_idx].value, observations[keep_idx].unit,
@@ -349,6 +395,12 @@ fn dedup_unit_variants(
                 remove.insert(idx);
             }
         }
+    }
+
+    // Apply deferred scale conversions
+    for (idx, converted, unit) in scale_updates {
+        observations[idx].canonical_value = converted;
+        observations[idx].canonical_unit = unit;
     }
 
     if !remove.is_empty() {
@@ -360,6 +412,45 @@ fn dedup_unit_variants(
         .filter(|(i, _)| !remove.contains(i))
         .map(|(_, obs)| obs)
         .collect()
+}
+
+/// Try a simple scale conversion between units that share the same mass prefix
+/// but differ in volume denominator (e.g., ng/mL -> ng/dL, g/L -> g/dL).
+/// Returns (converted_value, precision) preserving significant figures.
+fn try_scale_convert(
+    value: f64,
+    original_value_str: &str,
+    from_unit: &str,
+    to_unit: &str,
+) -> Option<(f64, i32)> {
+    let (from_mass, from_vol) = from_unit.split_once('/')?;
+    let (to_mass, to_vol) = to_unit.split_once('/')?;
+
+    // Mass prefix must match
+    if from_mass.to_lowercase() != to_mass.to_lowercase() {
+        return None;
+    }
+
+    let from_liters = volume_in_liters(from_vol)?;
+    let to_liters = volume_in_liters(to_vol)?;
+
+    let factor = to_liters / from_liters;
+    let converted = value * factor;
+
+    let sig_figs = normalize::significant_figures(original_value_str);
+    let rounded = normalize::round_to_sig_figs(converted, sig_figs);
+
+    Some((rounded, normalize::derive_precision(&format!("{rounded}"))))
+}
+
+/// Convert a volume unit string to its value in liters.
+fn volume_in_liters(vol: &str) -> Option<f64> {
+    match vol {
+        "L" => Some(1.0),
+        "dL" => Some(0.1),
+        "mL" => Some(0.001),
+        _ => None,
+    }
 }
 
 /// Execute a search_loinc tool call against the LOINC catalog.

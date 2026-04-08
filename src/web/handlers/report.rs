@@ -262,20 +262,22 @@ pub async fn import_detail(
         .map(|o| (o.loinc_code.clone(), o.chosen_idx as usize))
         .collect();
 
-    // Look up LOINC long common names for all codes in extraction
+    // Look up LOINC long common names and canonical units for all codes in extraction
     let mut loinc_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut loinc_units: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if let Some(ref ext) = extraction {
         for obs in &ext.observations {
             if !loinc_names.contains_key(&obs.loinc_code) {
                 if let Some(entry) = state.catalog.get_by_code(&obs.loinc_code) {
                     loinc_names.insert(obs.loinc_code.clone(), entry.long_common_name.clone());
+                    loinc_units.insert(obs.loinc_code.clone(), entry.example_ucum_units.clone());
                 }
             }
         }
     }
 
     let (matched_observations, duplicate_observations, dismissed_observations) = if let Some(ref ext) = extraction {
-        build_observation_lists(ext, &duplicate_loinc_codes, &overwrite_map, &loinc_names)
+        build_observation_lists(ext, &duplicate_loinc_codes, &overwrite_map, &loinc_names, &loinc_units)
     } else {
         (vec![], vec![], vec![])
     };
@@ -532,18 +534,20 @@ async fn render_review_table(
         .collect();
 
     let mut loinc_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut loinc_units: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if let Some(ref ext) = extraction {
         for obs in &ext.observations {
             if !loinc_names.contains_key(&obs.loinc_code) {
                 if let Some(entry) = state.catalog.get_by_code(&obs.loinc_code) {
                     loinc_names.insert(obs.loinc_code.clone(), entry.long_common_name.clone());
+                    loinc_units.insert(obs.loinc_code.clone(), entry.example_ucum_units.clone());
                 }
             }
         }
     }
 
     let (matched_observations, duplicate_observations, dismissed_observations) = if let Some(ref ext) = extraction {
-        build_observation_lists(ext, &duplicate_loinc_codes, &overwrite_map, &loinc_names)
+        build_observation_lists(ext, &duplicate_loinc_codes, &overwrite_map, &loinc_names, &loinc_units)
     } else {
         (vec![], vec![], vec![])
     };
@@ -617,12 +621,14 @@ fn build_observation_lists(
     duplicate_loinc_codes: &[String],
     overwrite_map: &std::collections::HashMap<String, usize>,
     loinc_names: &std::collections::HashMap<String, String>,
+    loinc_units: &std::collections::HashMap<String, String>,
 ) -> (Vec<minijinja::Value>, Vec<minijinja::Value>, Vec<minijinja::Value>) {
     let mut matched = Vec::new();
     let mut dupe_indices: Vec<(String, usize)> = Vec::new();
     let mut dismissed = Vec::new();
 
     for (idx, obs) in ext.observations.iter().enumerate() {
+        let loinc_unit = loinc_units.get(&obs.loinc_code).cloned().unwrap_or_default();
         if !duplicate_loinc_codes.contains(&obs.loinc_code) {
             let biomarker_name = loinc_names.get(&obs.loinc_code).cloned().unwrap_or_default();
             matched.push(minijinja::context! {
@@ -634,11 +640,12 @@ fn build_observation_lists(
                 canonical_value => obs.canonical_value,
                 canonical_unit => obs.canonical_unit,
                 loinc_code => obs.loinc_code,
+                loinc_unit => loinc_unit,
                 confidence => obs.confidence,
                 biomarker_name => biomarker_name,
                 human_resolved => false,
                 specimen => obs.specimen,
-                    match_source => obs.match_source,
+                match_source => obs.match_source,
             });
         } else if let Some(&chosen_idx) = overwrite_map.get(&obs.loinc_code) {
             if idx == chosen_idx {
@@ -652,6 +659,7 @@ fn build_observation_lists(
                     canonical_value => obs.canonical_value,
                     canonical_unit => obs.canonical_unit,
                     loinc_code => obs.loinc_code,
+                    loinc_unit => loinc_unit,
                     confidence => obs.confidence,
                     biomarker_name => biomarker_name,
                     human_resolved => true,
@@ -679,6 +687,7 @@ fn build_observation_lists(
         let group_first = loinc != prev_loinc;
         prev_loinc = loinc.clone();
         let biomarker_name = loinc_names.get(&loinc).cloned().unwrap_or_default();
+        let loinc_unit = loinc_units.get(&loinc).cloned().unwrap_or_default();
         minijinja::context! {
             idx => idx,
             marker_name => obs.marker_name,
@@ -688,11 +697,12 @@ fn build_observation_lists(
             canonical_value => obs.canonical_value,
             canonical_unit => obs.canonical_unit,
             loinc_code => obs.loinc_code,
+            loinc_unit => loinc_unit,
             confidence => obs.confidence,
             group_first => group_first,
             biomarker_name => biomarker_name,
             specimen => obs.specimen,
-                    match_source => obs.match_source,
+            match_source => obs.match_source,
         }
     }).collect();
 

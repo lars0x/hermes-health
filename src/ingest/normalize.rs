@@ -54,7 +54,7 @@ pub fn derive_precision(original: &str) -> i32 {
 /// Count significant figures in a numeric string.
 /// For lab values, all digits are considered significant (including trailing zeros).
 /// "185" = 3, "5.20" = 3, "4.8" = 2, "0.85" = 2
-fn significant_figures(s: &str) -> usize {
+pub fn significant_figures(s: &str) -> usize {
     let trimmed = s.trim().trim_start_matches('<').trim_start_matches('>').trim();
     let without_sign = trimmed.trim_start_matches('-');
 
@@ -79,7 +79,7 @@ fn significant_figures(s: &str) -> usize {
 }
 
 /// Round a value to a specific number of significant figures
-fn round_to_sig_figs(value: f64, sig_figs: usize) -> f64 {
+pub fn round_to_sig_figs(value: f64, sig_figs: usize) -> f64 {
     if value == 0.0 || sig_figs == 0 {
         return value;
     }
