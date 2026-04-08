@@ -26,6 +26,8 @@ pub struct ExtractedObservation {
     pub canonical_value: f64,
     pub confidence: f64,
     pub detection_limit: Option<String>,
+    #[serde(default)]
+    pub specimen: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

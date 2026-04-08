@@ -241,30 +241,49 @@ impl LoincCatalog {
         candidates
     }
 
-    /// Search specifically for quantitative lab tests (Qn scale type, Ser/Plas system)
-    #[allow(dead_code)]
-    pub fn search_lab(&self, query: &str, max_results: usize) -> Vec<LoincCandidate> {
+    /// Search for quantitative lab tests, optionally filtered by specimen type.
+    /// When specimen is provided, only matching entries are returned.
+    /// When specimen is None, results are ranked: serum/plasma > blood > urine.
+    pub fn search_lab(&self, query: &str, max_results: usize, specimen: Option<&str>) -> Vec<LoincCandidate> {
         let all = self.search(query, max_results * 10);
+
+        // Map specimen string to LOINC system keywords
+        let specimen_filter: Option<Vec<&str>> = specimen.map(|s| match s.to_lowercase().as_str() {
+            "serum" | "plasma" => vec!["Ser", "Plas"],
+            "blood" => vec!["Bld"],
+            "urine" => vec!["Ur"],
+            _ => vec!["Ser", "Plas", "Bld", "Ur"],
+        });
+
         let mut filtered: Vec<(LoincCandidate, u8)> = all.into_iter()
             .filter_map(|c| {
                 let entry = self.get_by_code(&c.loinc_code)?;
                 if entry.scale_typ != "Qn" {
                     return None;
                 }
-                // Prefer serum/plasma/blood over urine
-                let priority = if entry.system.contains("Ser") || entry.system.contains("Plas") {
-                    0
-                } else if entry.system.contains("Bld") {
-                    1
-                } else if entry.system.contains("Ur") {
-                    2
+
+                if let Some(ref keywords) = specimen_filter {
+                    // Strict filter: only entries matching the specimen
+                    if !keywords.iter().any(|kw| entry.system.contains(kw)) {
+                        return None;
+                    }
+                    Some((c, 0)) // All same priority when specimen is known
                 } else {
-                    return None;
-                };
-                Some((c, priority))
+                    // No specimen: prefer serum/plasma > blood > urine
+                    let priority = if entry.system.contains("Ser") || entry.system.contains("Plas") {
+                        0
+                    } else if entry.system.contains("Bld") {
+                        1
+                    } else if entry.system.contains("Ur") {
+                        2
+                    } else {
+                        return None;
+                    };
+                    Some((c, priority))
+                }
             })
             .collect();
-        // Sort by confidence desc, then specimen priority asc
+
         filtered.sort_by(|a, b| {
             b.0.confidence.partial_cmp(&a.0.confidence)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -311,18 +330,26 @@ mod tests {
     }
 
     #[test]
-    fn test_search_lab_sodium() {
+    fn test_search_lab_sodium_no_specimen() {
         let catalog = LoincCatalog::load();
-        let results = catalog.search_lab("Sodium", 3);
+        let results = catalog.search_lab("Sodium", 3, None);
         assert!(!results.is_empty(), "search_lab should find Sodium");
-        assert_eq!(results[0].loinc_code, "2951-2");
+        assert_eq!(results[0].loinc_code, "2951-2", "Should prefer serum/plasma");
+    }
+
+    #[test]
+    fn test_search_lab_sodium_urine() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.search_lab("Sodium", 3, Some("urine"));
+        assert!(!results.is_empty(), "search_lab should find urine Sodium");
+        assert!(results[0].loinc_code != "2951-2", "Should not return serum entry for urine specimen");
     }
 
     #[test]
     fn test_search_lab_potassium() {
         let catalog = LoincCatalog::load();
-        let results = catalog.search_lab("Potassium", 3);
+        let results = catalog.search_lab("Potassium", 3, None);
         assert!(!results.is_empty(), "search_lab should find Potassium");
-        assert_eq!(results[0].loinc_code, "2823-3");
+        assert_eq!(results[0].loinc_code, "2823-3", "Should prefer serum/plasma");
     }
 }

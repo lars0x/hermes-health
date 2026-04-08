@@ -293,6 +293,7 @@ pub async fn import_detail(
                     loinc_code => obs.loinc_code,
                     confidence => obs.confidence,
                     biomarker_name => biomarker_name,
+                    specimen => obs.specimen,
                 }})
                 .collect::<Vec<_>>()
         } else {
@@ -600,6 +601,7 @@ fn build_observation_lists(
                 confidence => obs.confidence,
                 biomarker_name => biomarker_name,
                 human_resolved => false,
+                specimen => obs.specimen,
             });
         } else if let Some(&chosen_idx) = overwrite_map.get(&obs.loinc_code) {
             if idx == chosen_idx {
@@ -616,6 +618,7 @@ fn build_observation_lists(
                     confidence => obs.confidence,
                     biomarker_name => biomarker_name,
                     human_resolved => true,
+                    specimen => obs.specimen,
                 });
             } else {
                 dismissed.push(minijinja::context! {
@@ -650,6 +653,7 @@ fn build_observation_lists(
             confidence => obs.confidence,
             group_first => group_first,
             biomarker_name => biomarker_name,
+            specimen => obs.specimen,
         }
     }).collect();
 

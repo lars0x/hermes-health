@@ -15,6 +15,8 @@ pub struct LabResultRow {
     pub value: serde_json::Value, // number, string ("Negative"), or null
     #[serde(default)]
     pub unit: Option<String>,
+    #[serde(default)]
+    pub specimen: Option<String>, // "serum", "urine", "blood", "plasma", etc.
 }
 
 /// Run direct extraction via raw Ollama API call.
@@ -40,7 +42,7 @@ pub async fn run_direct_extraction(
     };
 
     let prompt = format!(
-        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str}}]}}\n\nLab report:\n{}",
+        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nFor each result, identify the specimen type from section headers or context (e.g. \"Urine Chemistry\", \"Haematology\", \"Serum\").\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"specimen\": \"serum\" or \"urine\" or \"blood\" or \"plasma\" or null}}]}}\n\nLab report:\n{}",
         text
     );
 
@@ -145,8 +147,8 @@ pub async fn run_direct_extraction(
                 let bm = best_bm.unwrap();
                 (bm.loinc_code.clone(), best_score, Some(bm.clone()))
             } else {
-                // 3. Search LOINC catalog (quantitative lab tests only)
-                let candidates = catalog.search_lab(&row.marker_name, 1);
+                // 3. Search LOINC catalog (quantitative lab tests only, filtered by specimen if available)
+                let candidates = catalog.search_lab(&row.marker_name, 1, row.specimen.as_deref());
                 if let Some(best) = candidates.first() {
                     if best.confidence >= 0.85 {
                         let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &best.loinc_code)
@@ -201,6 +203,7 @@ pub async fn run_direct_extraction(
             canonical_value,
             confidence,
             detection_limit: None,
+            specimen: row.specimen.clone(),
         });
     }
 
@@ -379,6 +382,7 @@ async fn llm_resolve_markers(
                     canonical_value,
                     confidence: conf,
                     detection_limit: None,
+                    specimen: None,
                 });
                 continue;
             }

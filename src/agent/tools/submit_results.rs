@@ -130,6 +130,7 @@ impl Tool for SubmitResultsTool {
                     canonical_value,
                     confidence: o.confidence,
                     detection_limit: o.detection_limit,
+                    specimen: None,
                 }
             })
             .collect();

@@ -53,6 +53,7 @@
           <th>Marker</th>
           <th>Value</th>
           <th>Unit</th>
+          <th>Specimen</th>
           <th class="col-matched">LOINC</th>
           <th class="col-matched">LOINC Name</th>
           <th class="col-matched">Confidence</th>
@@ -72,6 +73,7 @@
               <span class="text-blue" style="font-size: 10px;">&rarr;{{ obs.canonical_value }} {{ obs.canonical_unit }}</span>
             {% endif %}
           </td>
+          <td style="font-size: 11px; color: var(--text-secondary);">{{ obs.specimen }}</td>
           <td class="col-matched" style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
           <td class="col-matched" style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
           <td class="col-matched">
@@ -106,6 +108,7 @@
           <th>Marker</th>
           <th>Value</th>
           <th>Unit</th>
+          <th>Specimen</th>
           <th class="col-matched">LOINC</th>
           <th class="col-matched">LOINC Name</th>
           <th class="col-matched">Confidence</th>
@@ -126,6 +129,7 @@
               <span class="text-blue" style="font-size: 10px;">&rarr;{{ obs.canonical_value }} {{ obs.canonical_unit }}</span>
             {% endif %}
           </td>
+          <td style="font-size: 11px; color: var(--text-secondary);">{{ obs.specimen }}</td>
           <td class="col-matched" style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
           <td class="col-matched" style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
           <td class="col-matched">
