@@ -279,12 +279,6 @@ fn dedup_unit_variants(
     use crate::ingest::units;
     use std::collections::{HashMap, HashSet};
 
-    // Group indices by loinc_code
-    let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
-    for (i, obs) in observations.iter().enumerate() {
-        groups.entry(&obs.loinc_code).or_default().push(i);
-    }
-
     let mut remove: HashSet<usize> = HashSet::new();
 
     let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
@@ -316,7 +310,7 @@ fn dedup_unit_variants(
             Some(entry) => entry,
             None => continue,
         };
-        let canonical_unit = units::normalize_unit(&loinc_entry.example_ucum_units);
+        let canonical_unit = strip_ucum_annotation(&units::normalize_unit(&loinc_entry.example_ucum_units));
 
         // Score each observation: (tier, sig_figs) - lower tier is better, higher sig_figs is better
         // Tier 1: original unit already matches LOINC canonical (no conversion needed at commit)
@@ -326,11 +320,12 @@ fn dedup_unit_variants(
         for (pos, &idx) in indices.iter().enumerate() {
             let obs = &observations[idx];
             let sig_figs = normalize::significant_figures(&obs.original_value);
+            let obs_unit = strip_ucum_annotation(&normalized_units[pos]);
 
-            if normalized_units[pos] == canonical_unit {
+            if obs_unit == canonical_unit {
                 candidates.push((idx, 1, sig_figs));
             } else if try_scale_convert(
-                obs.value, &obs.original_value, &normalized_units[pos], &canonical_unit,
+                obs.value, &obs.original_value, &obs_unit, &canonical_unit,
             ).is_some() {
                 candidates.push((idx, 2, sig_figs));
             }
@@ -374,6 +369,16 @@ fn dedup_unit_variants(
         .filter(|(i, _)| !remove.contains(i))
         .map(|(_, obs)| obs)
         .collect()
+}
+
+/// Strip UCUM annotations like `{creat}` from unit strings.
+/// e.g., `mg/mmol{creat}` -> `mg/mmol`
+fn strip_ucum_annotation(unit: &str) -> String {
+    if let Some(pos) = unit.find('{') {
+        unit[..pos].to_string()
+    } else {
+        unit.to_string()
+    }
 }
 
 /// Try a simple scale conversion between units that share the same mass prefix
