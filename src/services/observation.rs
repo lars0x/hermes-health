@@ -2,7 +2,7 @@ use sqlx::SqlitePool;
 
 use crate::db::models::{NewObservation, Observation};
 use crate::db::queries;
-use crate::error::{HermesError, Result};
+use crate::error::Result;
 use crate::ingest::normalize;
 use crate::services::biomarker;
 use crate::services::loinc::LoincCatalog;
@@ -19,12 +19,14 @@ pub struct ObservationResult {
 
 /// Result of a batch observation insert
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct BatchResult {
     pub successes: Vec<ObservationResult>,
     pub failures: Vec<BatchFailure>,
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct BatchFailure {
     pub index: usize,
     pub biomarker: String,
@@ -89,6 +91,7 @@ pub async fn add_observation(
 }
 
 /// Add a batch of observations. Each is processed independently; failures don't block successes.
+#[allow(dead_code)]
 pub async fn add_batch(
     pool: &SqlitePool,
     catalog: &LoincCatalog,

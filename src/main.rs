@@ -191,8 +191,8 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 println!(
-                    "{:<6} {:<12} {:<10} {:<12} {:<10} {}",
-                    "ID", "Date", "Value", "Unit", "Fasting", "Notes"
+                    "{:<6} {:<12} {:<10} {:<12} {:<10} Notes",
+                    "ID", "Date", "Value", "Unit", "Fasting"
                 );
                 println!("{}", "-".repeat(65));
                 for o in &observations {

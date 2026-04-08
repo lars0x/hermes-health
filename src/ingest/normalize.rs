@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
-use crate::db::models::UnitConversion;
 use crate::db::queries;
-use crate::error::{HermesError, Result};
+use crate::error::Result;
 use crate::ingest::units;
 
 /// The result of normalizing an observation value
@@ -22,10 +21,10 @@ pub struct NormalizedObservation {
 fn parse_original_value(original: &str) -> (f64, Option<String>, Option<String>) {
     let trimmed = original.trim();
 
-    let (prefix, numeric_str) = if trimmed.starts_with('<') {
-        (Some("<".to_string()), trimmed[1..].trim())
-    } else if trimmed.starts_with('>') {
-        (Some(">".to_string()), trimmed[1..].trim())
+    let (prefix, numeric_str) = if let Some(stripped) = trimmed.strip_prefix('<') {
+        (Some("<".to_string()), stripped.trim())
+    } else if let Some(stripped) = trimmed.strip_prefix('>') {
+        (Some(">".to_string()), stripped.trim())
     } else {
         (None, trimmed)
     };

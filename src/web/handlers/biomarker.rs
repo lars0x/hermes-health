@@ -18,7 +18,7 @@ pub async fn biomarkers_list(
         crate::db::queries::get_latest_observation_per_biomarker(&state.pool).await?;
 
     // Group biomarkers by category
-    let mut categories: Vec<String> = Vec::new();
+    let _categories: Vec<String> = Vec::new();
     let mut grouped: std::collections::BTreeMap<String, Vec<minijinja::Value>> = std::collections::BTreeMap::new();
 
     for bm in &biomarkers {

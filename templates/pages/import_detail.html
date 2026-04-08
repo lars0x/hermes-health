@@ -11,6 +11,7 @@
     <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 16px; flex-wrap: wrap;">
       <span>Format: {{ report.format }}</span>
       <span>Imported: {{ import.created_at }}</span>
+      {% if duration %}<span>Duration: {{ duration }}</span>{% endif %}
       {% if import.model_used %}<span>Model: {{ import.model_used }}</span>{% endif %}
       {% if import.agent_turns %}<span>Agent turns: {{ import.agent_turns }}</span>{% endif %}
     </div>
@@ -167,20 +168,59 @@
   <div class="card" style="margin-top: 12px;">
     <details>
       <summary style="cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary);">
-        LLM Log ({{ llm_log_entries|length }} calls)
+        LLM Log ({{ llm_log_entries|length }} steps)
       </summary>
       <div style="margin-top: 12px;">
         {% for entry in llm_log_entries %}
         <div style="margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-          <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px;">{{ entry.step }}</div>
-          <div style="margin-bottom: 8px;">
-            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 2px;">Prompt</div>
-            <pre style="font-size: 11px; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{{ entry.prompt }}</pre>
+          <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px;">
+            {{ entry.step }}
+            {% if entry.turns %}
+              <span style="font-weight: normal; color: var(--text-secondary); font-size: 11px;">
+                - {{ entry.turns }} turns, {{ entry.tool_calls_count }} tool calls
+              </span>
+            {% endif %}
           </div>
-          <div>
-            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 2px;">Response</div>
-            <pre style="font-size: 11px; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{{ entry.response }}</pre>
-          </div>
+
+          {% if entry.messages %}
+            {# Agentic conversation view #}
+            {% for msg in entry.messages %}
+            <div style="margin-bottom: 6px; {% if msg.role == 'tool' %}margin-left: 16px;{% endif %}">
+              <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+                {% if msg.role == 'assistant' %}color: var(--blue);
+                {% elif msg.role == 'tool' %}color: var(--green);
+                {% else %}color: var(--text-secondary);{% endif %}">
+                {{ msg.role }}
+              </div>
+              {% if msg.thinking %}
+                <details style="margin-bottom: 4px;">
+                  <summary style="font-size: 10px; color: var(--text-secondary); cursor: pointer;">thinking</summary>
+                  <pre style="font-size: 10px; color: var(--text-secondary); background: var(--bg-secondary); padding: 6px; border-radius: var(--radius); white-space: pre-wrap; max-height: 150px; overflow-y: auto;">{{ msg.thinking }}</pre>
+                </details>
+              {% endif %}
+              {% if msg.tool_calls %}
+                {% for tc in msg.tool_calls %}
+                <div style="font-size: 11px; font-family: var(--mono); background: var(--info-bg); color: var(--info-text); padding: 4px 8px; border-radius: var(--radius); margin-bottom: 4px; display: inline-block;">
+                  {{ tc.name }}({{ tc.arguments }})
+                </div>
+                {% endfor %}
+              {% endif %}
+              {% if msg.content %}
+                <pre style="font-size: 11px; background: var(--bg-secondary); padding: 6px 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">{{ msg.content }}</pre>
+              {% endif %}
+            </div>
+            {% endfor %}
+          {% else %}
+            {# Legacy single-shot view #}
+            <div style="margin-bottom: 8px;">
+              <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 2px;">Prompt</div>
+              <pre style="font-size: 11px; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{{ entry.prompt }}</pre>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 2px;">Response</div>
+              <pre style="font-size: 11px; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius); overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">{{ entry.response }}</pre>
+            </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>

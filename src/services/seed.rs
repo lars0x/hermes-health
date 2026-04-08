@@ -142,19 +142,20 @@ fn get_seed_biomarkers() -> Vec<NewBiomarker> {
            Some(20.0), Some(39.0), Some(22.0), Some(35.0)),
 
         // --- Calculated markers ---
-        calc("T.Chol/HDL", "T.Chol/HDL Ratio", &["Total Cholesterol/HDL Ratio", "T.Chol/HDL Ratio", "TC/HDL", "Chol/HDL Ratio"], "", "Lipid Panel",
+        calc("32309-7", "T.Chol/HDL Ratio", &["Total Cholesterol/HDL Ratio", "T.Chol/HDL Ratio", "TC/HDL", "Chol/HDL Ratio", "T.Chol/HDL"], "", "Lipid Panel",
              None, Some(5.0), None, Some(4.0)),
-        calc("A/G", "A/G Ratio", &["Albumin/Globulin Ratio", "AG Ratio", "Albumin Globulin Ratio"], "", "Metabolic",
+        calc("1759-0", "A/G Ratio", &["Albumin/Globulin Ratio", "AG Ratio", "Albumin Globulin Ratio", "A/G"], "", "Metabolic",
              Some(1.2), Some(2.2), Some(1.2), Some(2.2)),
-        calc("eGFR", "eGFR", &["eGFR (CKD-EPI 2009)", "eGFR (CKD-EPI)", "Estimated GFR", "GFR"], "mL/min/1.73m2", "Kidney",
+        calc("98979-8", "eGFR", &["eGFR (CKD-EPI 2009)", "eGFR (CKD-EPI)", "eGFR (CKD-EPI 2021)", "Estimated GFR", "GFR"], "mL/min/1.73m2", "Kidney",
              Some(60.0), None, Some(90.0), None),
-        calc("TG/HDL", "TG/HDL Ratio", &["Triglyceride HDL Ratio"], "", "Lipid Panel",
+        calc("44733-4", "TG/HDL Ratio", &["Triglyceride HDL Ratio", "TG/HDL"], "", "Lipid Panel",
              None, Some(3.5), None, Some(2.0)),
         calc("HOMA-IR", "HOMA-IR", &["Homeostatic Model Assessment"], "", "Metabolic",
              None, Some(2.5), None, Some(1.5)),
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 fn bm(
     loinc: &str, name: &str, aliases: &[&str], unit: &str, category: &str,
     ref_low: Option<f64>, ref_high: Option<f64>,
@@ -174,6 +175,7 @@ fn bm(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn calc(
     code: &str, name: &str, aliases: &[&str], unit: &str, category: &str,
     ref_low: Option<f64>, ref_high: Option<f64>,

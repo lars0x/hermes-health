@@ -9,6 +9,12 @@ pub struct TemplateEngine {
     env: Arc<Environment<'static>>,
 }
 
+impl Default for TemplateEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TemplateEngine {
     pub fn new() -> Self {
         let mut env = Environment::new();

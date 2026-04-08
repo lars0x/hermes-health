@@ -15,6 +15,25 @@ use crate::web::AppState;
 
 // --- Import list page ---
 
+/// Format duration between two ISO 8601 timestamps as "XmXs".
+fn format_duration(created: &str, completed: &str) -> String {
+    let parse = |s: &str| -> Option<chrono::NaiveDateTime> {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%SZ").ok()
+    };
+    if let (Some(start), Some(end)) = (parse(created), parse(completed)) {
+        let secs = (end - start).num_seconds().max(0);
+        let mins = secs / 60;
+        let rem = secs % 60;
+        if mins > 0 {
+            format!("{}m{}s", mins, rem)
+        } else {
+            format!("{}s", rem)
+        }
+    } else {
+        String::new()
+    }
+}
+
 async fn enrich_imports(pool: &sqlx::SqlitePool, imports: &[crate::db::models::Import]) -> Vec<minijinja::Value> {
     let mut rows = Vec::new();
     for imp in imports {
@@ -26,6 +45,9 @@ async fn enrich_imports(pool: &sqlx::SqlitePool, imports: &[crate::db::models::I
         } else {
             0
         };
+        let duration = imp.completed_at.as_deref()
+            .map(|c| format_duration(&imp.created_at, c))
+            .unwrap_or_default();
         rows.push(minijinja::context! {
             id => imp.id,
             filename => report.as_ref().map(|r| r.filename.clone()).unwrap_or_default(),
@@ -36,6 +58,7 @@ async fn enrich_imports(pool: &sqlx::SqlitePool, imports: &[crate::db::models::I
             unresolved_count => imp.unresolved_count,
             skipped_count => skipped_count,
             created_at => imp.created_at,
+            duration => duration,
         });
     }
     rows
@@ -294,6 +317,7 @@ pub async fn import_detail(
                     confidence => obs.confidence,
                     biomarker_name => biomarker_name,
                     specimen => obs.specimen,
+                    match_source => obs.match_source,
                 }})
                 .collect::<Vec<_>>()
         } else {
@@ -309,11 +333,16 @@ pub async fn import_detail(
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default();
 
+    let duration = import.completed_at.as_deref()
+        .map(|c| format_duration(&import.created_at, c))
+        .unwrap_or_default();
+
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
         current_path => format!("/imports/{}", id),
         report => report,
         import => import,
+        duration => duration,
         extraction => extraction,
         import_id => id,
         error_message => error_message,
@@ -607,6 +636,7 @@ fn build_observation_lists(
                 biomarker_name => biomarker_name,
                 human_resolved => false,
                 specimen => obs.specimen,
+                    match_source => obs.match_source,
             });
         } else if let Some(&chosen_idx) = overwrite_map.get(&obs.loinc_code) {
             if idx == chosen_idx {
@@ -624,6 +654,7 @@ fn build_observation_lists(
                     biomarker_name => biomarker_name,
                     human_resolved => true,
                     specimen => obs.specimen,
+                    match_source => obs.match_source,
                 });
             } else {
                 dismissed.push(minijinja::context! {
@@ -659,6 +690,7 @@ fn build_observation_lists(
             group_first => group_first,
             biomarker_name => biomarker_name,
             specimen => obs.specimen,
+                    match_source => obs.match_source,
         }
     }).collect();
 

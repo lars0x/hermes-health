@@ -28,6 +28,9 @@ pub struct ExtractedObservation {
     pub detection_limit: Option<String>,
     #[serde(default)]
     pub specimen: Option<String>,
+    /// How this LOINC code was matched: "catalog", "llm", or "both"
+    #[serde(default)]
+    pub match_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,6 +48,29 @@ pub struct LlmLogEntry {
     pub step: String,
     pub prompt: String,
     pub response: String,
+    /// Full conversation for multi-turn tool-calling steps. None for single-shot calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages: Option<Vec<ConversationMessage>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turns: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallRecord>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallRecord {
+    pub name: String,
+    pub arguments: serde_json::Value,
 }
 
 use std::sync::Arc;

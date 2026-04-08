@@ -78,15 +78,17 @@
           <td class="col-matched" style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
           <td class="col-matched">
             {% if obs.human_resolved %}
-              <span class="pill" style="background: var(--info-bg); color: var(--info-text); font-size: 10px;">user matched</span>
-            {% elif obs.confidence >= 0.95 %}
-              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% exact</span>
-            {% elif obs.confidence >= 0.90 %}
-              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% alias</span>
+              <span class="pill" style="background: var(--info-bg); color: var(--info-text); font-size: 10px;">user</span>
+            {% elif obs.match_source == "both" %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% both</span>
+            {% elif obs.match_source == "llm" %}
+              <span class="pill" style="background: var(--info-bg); color: var(--info-text); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% llm</span>
+            {% elif obs.match_source == "catalog" %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% catalog</span>
             {% elif obs.confidence >= 0.85 %}
-              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% fuzzy</span>
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>
             {% else %}
-              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% low</span>
+              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>
             {% endif %}
           </td>
         </tr>
@@ -133,14 +135,16 @@
           <td class="col-matched" style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
           <td class="col-matched" style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
           <td class="col-matched">
-            {% if obs.confidence >= 0.95 %}
-              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% exact</span>
-            {% elif obs.confidence >= 0.90 %}
-              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% alias</span>
+            {% if obs.match_source == "both" %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% both</span>
+            {% elif obs.match_source == "llm" %}
+              <span class="pill" style="background: var(--info-bg); color: var(--info-text); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% llm</span>
+            {% elif obs.match_source == "catalog" %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% catalog</span>
             {% elif obs.confidence >= 0.85 %}
-              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% fuzzy</span>
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>
             {% else %}
-              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% low</span>
+              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>
             {% endif %}
           </td>
           <td>

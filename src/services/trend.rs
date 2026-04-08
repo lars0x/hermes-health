@@ -5,7 +5,6 @@ use sqlx::SqlitePool;
 use crate::db::models::{Biomarker, Observation};
 use crate::db::queries;
 use crate::error::Result;
-use crate::services::biomarker as bm_service;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TrendAnalysis {
@@ -115,7 +114,7 @@ fn compute_stats(
     let y: Vec<f64> = observations.iter().map(|o| o.value).collect();
 
     // OLS linear regression: y = slope * x + intercept
-    let (slope, intercept, r_squared) = linear_regression(&x, &y);
+    let (slope, _intercept, r_squared) = linear_regression(&x, &y);
 
     // Slope in units per year (x is in days)
     let slope_per_year = slope * 365.0;
@@ -276,7 +275,7 @@ fn determine_status(direction: &str, bm: &Biomarker, latest: f64) -> String {
 /// Check if the current trend projects the value to cross a reference range boundary.
 fn check_approaching_limit(
     slope_per_day: f64,
-    dates: &[NaiveDate],
+    _dates: &[NaiveDate],
     latest: f64,
     bm: &Biomarker,
     projection_days: u32,

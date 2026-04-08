@@ -34,6 +34,7 @@ pub enum MatchType {
     ExactName,
     Alias,
     Fuzzy,
+    WordMatch,
 }
 
 impl std::fmt::Display for MatchType {
@@ -43,6 +44,7 @@ impl std::fmt::Display for MatchType {
             MatchType::ExactName => write!(f, "exact"),
             MatchType::Alias => write!(f, "alias"),
             MatchType::Fuzzy => write!(f, "fuzzy"),
+            MatchType::WordMatch => write!(f, "word"),
         }
     }
 }
@@ -250,15 +252,15 @@ impl LoincCatalog {
         // Map specimen string to LOINC system keywords
         let specimen_filter: Option<Vec<&str>> = specimen.map(|s| match s.to_lowercase().as_str() {
             "serum" | "plasma" => vec!["Ser", "Plas"],
-            "blood" => vec!["Bld"],
+            "blood" => vec!["Bld", "RBC"],
             "urine" => vec!["Ur"],
-            _ => vec!["Ser", "Plas", "Bld", "Ur"],
+            _ => vec!["Ser", "Plas", "Bld", "RBC", "Ur"],
         });
 
         let mut filtered: Vec<(LoincCandidate, u8)> = all.into_iter()
             .filter_map(|c| {
                 let entry = self.get_by_code(&c.loinc_code)?;
-                if entry.scale_typ != "Qn" {
+                if entry.scale_typ != "Qn" && entry.scale_typ != "SemiQn" {
                     return None;
                 }
 
@@ -269,10 +271,10 @@ impl LoincCatalog {
                     }
                     Some((c, 0)) // All same priority when specimen is known
                 } else {
-                    // No specimen: prefer serum/plasma > blood > urine
+                    // No specimen: prefer serum/plasma > blood/RBC > urine
                     let priority = if entry.system.contains("Ser") || entry.system.contains("Plas") {
                         0
-                    } else if entry.system.contains("Bld") {
+                    } else if entry.system.contains("Bld") || entry.system.contains("RBC") {
                         1
                     } else if entry.system.contains("Ur") {
                         2
@@ -291,6 +293,108 @@ impl LoincCatalog {
         });
         filtered.into_iter().map(|(c, _)| c).take(max_results).collect()
     }
+
+    /// Word-overlap text search for quantitative lab tests.
+    /// Unlike `search_lab()` (Jaro-Winkler), this handles multi-word queries,
+    /// abbreviation prefixes, and word reordering (e.g. "LDL Cholesterol"
+    /// matches "Cholesterol in LDL").
+    pub fn text_search_lab(&self, query: &str, max_results: usize, specimen: Option<&str>) -> Vec<LoincCandidate> {
+        let query_words = tokenize(query);
+        if query_words.is_empty() {
+            return vec![];
+        }
+
+        let specimen_filter: Option<Vec<&str>> = specimen.map(|s| match s.to_lowercase().as_str() {
+            "serum" | "plasma" => vec!["Ser", "Plas"],
+            "blood" => vec!["Bld", "RBC"],
+            "urine" => vec!["Ur"],
+            _ => vec!["Ser", "Plas", "Bld", "RBC", "Ur"],
+        });
+
+        let mut scored: Vec<(f64, u8, usize)> = Vec::new();
+
+        for (idx, entry) in self.entries.iter().enumerate() {
+            if entry.scale_typ != "Qn" && entry.scale_typ != "SemiQn" {
+                continue;
+            }
+
+            let priority = if let Some(ref keywords) = specimen_filter {
+                if !keywords.iter().any(|kw| entry.system.contains(kw)) {
+                    continue;
+                }
+                0u8
+            } else if entry.system.contains("Ser") || entry.system.contains("Plas") {
+                0
+            } else if entry.system.contains("Bld") || entry.system.contains("RBC") {
+                1
+            } else if entry.system.contains("Ur") {
+                2
+            } else {
+                continue;
+            };
+
+            let component_words = tokenize(&entry.component);
+            let long_name_words = tokenize(&entry.long_common_name);
+            let short_name_words = tokenize(&entry.short_name);
+
+            let score = word_match_score(&query_words, &component_words)
+                .max(word_match_score(&query_words, &long_name_words))
+                .max(word_match_score(&query_words, &short_name_words));
+
+            // Require at least 50% of query words to match
+            if score >= 0.5 {
+                scored.push((score, priority, idx));
+            }
+        }
+
+        scored.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.cmp(&b.1))
+        });
+
+        scored.into_iter().take(max_results).map(|(score, _, idx)| {
+            let entry = &self.entries[idx];
+            LoincCandidate {
+                loinc_code: entry.loinc_num.clone(),
+                canonical_name: entry.long_common_name.clone(),
+                confidence: score,
+                match_type: MatchType::WordMatch,
+            }
+        }).collect()
+    }
+}
+
+/// Tokenize text into lowercase words, dropping short noise words.
+fn tokenize(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 2)
+        .filter(|w| !matches!(*w, "in" | "of" | "by" | "or" | "to" | "is" | "at" | "on"))
+        .map(String::from)
+        .collect()
+}
+
+/// Score how well query words match target words.
+/// Combines precision (fraction of query matched) with coverage (fraction of target matched)
+/// to rank exact component matches above partial long-name matches.
+/// Supports prefix matching in both directions (e.g. "hemo" matches "hemoglobin").
+fn word_match_score(query_words: &[String], target_words: &[String]) -> f64 {
+    if query_words.is_empty() || target_words.is_empty() {
+        return 0.0;
+    }
+    let matched = query_words.iter()
+        .filter(|qw| {
+            target_words.iter().any(|tw| {
+                tw == *qw
+                    || (qw.len() >= 3 && tw.starts_with(qw.as_str()))
+                    || (tw.len() >= 3 && qw.starts_with(tw.as_str()))
+            })
+        })
+        .count();
+    let precision = matched as f64 / query_words.len() as f64;
+    let coverage = matched as f64 / target_words.len() as f64;
+    // Precision-weighted: penalize entries where the query only covers a small fraction
+    precision * coverage.sqrt()
 }
 
 #[cfg(test)]
@@ -378,5 +482,53 @@ mod tests {
         let results = catalog.search_lab("Potassium", 3, None);
         assert!(!results.is_empty(), "search_lab should find Potassium");
         assert_eq!(results[0].loinc_code, "2823-3", "Should prefer serum/plasma");
+    }
+
+    // --- text_search_lab tests ---
+
+    #[test]
+    fn test_text_search_estimated_average_glucose() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("eAG estimated Average Glucose", 5, None);
+        println!("text_search_lab('eAG estimated Average Glucose'):");
+        for r in &results {
+            println!("  {} | {} | {:.2}", r.loinc_code, r.canonical_name, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should find estimated average glucose");
+        assert_eq!(results[0].loinc_code, "27353-2");
+    }
+
+    #[test]
+    fn test_text_search_ldl_cholesterol() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("LDL Cholesterol", 5, Some("serum"));
+        println!("text_search_lab('LDL Cholesterol', serum):");
+        for r in &results {
+            println!("  {} | {} | {:.2}", r.loinc_code, r.canonical_name, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should find LDL Cholesterol");
+    }
+
+    #[test]
+    fn test_text_search_mean_corpuscular_volume() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("Mean corpuscular volume", 5, Some("blood"));
+        println!("text_search_lab('Mean corpuscular volume', blood):");
+        for r in &results {
+            println!("  {} | {} | {:.2}", r.loinc_code, r.canonical_name, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should return candidates for MCV");
+    }
+
+    #[test]
+    fn test_text_search_sodium_serum() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("Sodium", 3, Some("serum"));
+        println!("text_search_lab('Sodium', serum):");
+        for r in &results {
+            println!("  {} | {} | {:.2}", r.loinc_code, r.canonical_name, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should find Sodium");
+        assert_eq!(results[0].loinc_code, "2951-2");
     }
 }

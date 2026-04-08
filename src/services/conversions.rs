@@ -1,7 +1,5 @@
 use rust_embed::Embed;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
-
 use crate::db::queries;
 use crate::error::Result;
 
@@ -11,7 +9,7 @@ use crate::error::Result;
 struct ConversionData;
 
 /// A conversion entry from the miracum LOINC conversion table
-struct ConversionEntry {
+pub struct ConversionEntry {
     from_loinc: String,
     from_unit: String,
     to_loinc: String,
@@ -106,6 +104,7 @@ fn load_conversion_table() -> Vec<ConversionEntry> {
 
 /// Build a lookup of conversion factors indexed by (from_unit, to_unit, to_loinc)
 /// for quick access during extraction
+#[allow(dead_code)]
 pub fn get_conversion_factor_for_loinc(
     entries: &[ConversionEntry],
     loinc_code: &str,

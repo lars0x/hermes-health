@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum HermesError {
     #[error("not found: {0}")]
     NotFound(String),

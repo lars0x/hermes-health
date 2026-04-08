@@ -423,7 +423,7 @@ pub async fn update_import_result(
     llm_log: Option<&str>,
 ) -> Result<()> {
     sqlx::query(
-        "UPDATE imports SET status = ?, raw_extraction = ?, agent_turns = ?, extracted_count = ?, unresolved_count = ?, test_date = ?, llm_log = ? WHERE id = ?"
+        "UPDATE imports SET status = ?, raw_extraction = ?, agent_turns = ?, extracted_count = ?, unresolved_count = ?, test_date = ?, llm_log = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?"
     )
     .bind(status)
     .bind(raw_extraction)

@@ -44,6 +44,7 @@ pub struct OllamaConfig {
 pub struct ExtractionConfig {
     pub mode: String,
     pub max_agent_turns: u32,
+    pub resolve_max_turns: u32,
     pub validation_strictness: String,
 }
 
@@ -105,6 +106,7 @@ impl Default for ExtractionConfig {
         Self {
             mode: "agentic".to_string(),
             max_agent_turns: 20,
+            resolve_max_turns: 30,
             validation_strictness: "warn".to_string(),
         }
     }

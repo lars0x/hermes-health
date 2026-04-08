@@ -16,6 +16,7 @@ num_predict = 8192
 [extraction]
 mode = "direct"
 max_agent_turns = 20
+resolve_max_turns = 30
 validation_strictness = "warn"
 
 # [user]

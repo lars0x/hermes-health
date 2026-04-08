@@ -31,7 +31,10 @@
           <span class="pill pill-other">{{ i.status }}</span>
         {% endif %}
       </td>
-      <td style="font-size:12px; color: var(--text-secondary);">{{ i.created_at }}</td>
+      <td style="font-size:12px; color: var(--text-secondary);">
+        {{ i.created_at }}
+        {% if i.duration %}<span style="font-size: 11px; color: var(--text-secondary);"> ({{ i.duration }})</span>{% endif %}
+      </td>
       <td style="font-size:12px;">
         {% if i.extracted_count %}{{ i.extracted_count }} found{% endif %}
         {% if i.unresolved_count %}, {{ i.unresolved_count }} unresolved{% endif %}

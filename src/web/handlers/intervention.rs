@@ -57,7 +57,7 @@ pub async fn interventions_page(
             if let Some(d) = parse(&i.started_at) {
                 if d < earliest { earliest = d; }
             }
-            if let Some(end) = i.ended_at.as_deref().and_then(|s| parse(s)) {
+            if let Some(end) = i.ended_at.as_deref().and_then(&parse) {
                 if end > latest { latest = end; }
             }
         }
@@ -68,7 +68,7 @@ pub async fn interventions_page(
 
         for i in &interventions {
             let start = parse(&i.started_at).unwrap_or(today_date);
-            let end = i.ended_at.as_deref().and_then(|s| parse(s)).unwrap_or(today_date);
+            let end = i.ended_at.as_deref().and_then(&parse).unwrap_or(today_date);
             let bar_left = ((start - range_start).num_days() as f64 / total_days * 100.0).max(0.0);
             let bar_width = (((end - start).num_days().max(1)) as f64 / total_days * 100.0).max(2.0);
 

@@ -131,6 +131,7 @@ impl Tool for SubmitResultsTool {
                     confidence: o.confidence,
                     detection_limit: o.detection_limit,
                     specimen: None,
+                    match_source: None,
                 }
             })
             .collect();
