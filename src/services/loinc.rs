@@ -330,6 +330,22 @@ mod tests {
     }
 
     #[test]
+    fn test_search_lab_ldl_cholesterol() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.search_lab("LDL Cholesterol", 5, Some("serum"));
+        println!("search_lab('LDL Cholesterol', serum) returned {} results:", results.len());
+        for r in &results {
+            println!("  {} | {} | conf={:.3}", r.loinc_code, r.canonical_name, r.confidence);
+        }
+        // Also check raw search
+        let raw = catalog.search("LDL Cholesterol", 5);
+        println!("\nsearch('LDL Cholesterol') returned {} results:", raw.len());
+        for r in &raw {
+            println!("  {} | {} | conf={:.3} | {:?}", r.loinc_code, r.canonical_name, r.confidence, r.match_type);
+        }
+    }
+
+    #[test]
     fn test_search_sodium_raw() {
         let catalog = LoincCatalog::load();
         let results = catalog.search("Sodium", 30);

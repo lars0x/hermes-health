@@ -94,12 +94,24 @@ pub async fn run_direct_extraction(
     }];
 
     // Parse the JSON response - handle both array and object-with-array formats
-    let rows = parse_extraction_response(response_text)?;
+    let mut rows = parse_extraction_response(response_text)?;
+
+    // Some LLMs put specimen at the top level instead of per-result.
+    // If most rows lack specimen, check for a top-level specimen field and propagate it.
+    if let Ok(obj) = serde_json::from_str::<serde_json::Value>(response_text) {
+        if let Some(top_specimen) = obj.get("specimen").and_then(|v| v.as_str()) {
+            let top_specimen = top_specimen.to_string();
+            for row in &mut rows {
+                if row.specimen.is_none() {
+                    row.specimen = Some(top_specimen.clone());
+                }
+            }
+        }
+    }
 
     tracing::info!("Parsed {} lab result rows", rows.len());
 
     // Post-process: LOINC matching + unit conversion
-    let tracked = crate::db::queries::list_biomarkers(&pool, None).await.unwrap_or_default();
     let mut observations = Vec::new();
     let mut unresolved = Vec::new();
 
@@ -189,8 +201,8 @@ pub async fn run_direct_extraction(
 
     // Second pass: run LLM resolution and date extraction in parallel
     let resolve_future = async {
-        if !unresolved.is_empty() && !tracked.is_empty() {
-            llm_resolve_markers(&client, &config, &tracked, &pool, unresolved).await
+        if !unresolved.is_empty() {
+            llm_resolve_markers(&client, &config, &catalog, &pool, unresolved.clone()).await
         } else {
             (vec![], unresolved, None)
         }
@@ -219,27 +231,23 @@ pub async fn run_direct_extraction(
     }, llm_log))
 }
 
-/// Use the LLM to map unresolved marker names to tracked biomarkers.
-/// Sends a single batch request: "which of these known biomarkers does each unresolved name correspond to?"
+/// Use the LLM to map unresolved marker names to LOINC codes.
+/// The LLM uses its knowledge of the LOINC standard to return appropriate codes.
 async fn llm_resolve_markers(
     client: &reqwest::Client,
     config: &HermesConfig,
-    tracked: &[crate::db::models::Biomarker],
+    catalog: &LoincCatalog,
     pool: &SqlitePool,
     unresolved: Vec<UnresolvedMarker>,
 ) -> (Vec<ExtractedObservation>, Vec<UnresolvedMarker>, Option<crate::agent::LlmLogEntry>) {
-    // Build the list of known biomarker names for the prompt
-    let known_list: Vec<String> = tracked
-        .iter()
-        .map(|b| format!("{} ({})", b.name, b.loinc_code))
+    let unresolved_list: Vec<String> = unresolved.iter()
+        .map(|u| format!("{} (value: {}, unit: {}{})", u.marker_name, u.value, u.unit,
+            u.specimen.as_ref().map(|s| format!(", specimen: {}", s)).unwrap_or_default()))
         .collect();
 
-    let unresolved_names: Vec<&str> = unresolved.iter().map(|u| u.marker_name.as_str()).collect();
-
     let prompt = format!(
-        "/nothink\nI have these biomarker names from a lab report that I could not automatically match:\n{}\n\nHere are the known biomarkers in my system:\n{}\n\nFor each unresolved name, tell me which known biomarker it maps to (if any). Rate your confidence from 0.0 to 1.0 (1.0 = certain match like \"Red Cell Count\" -> RBC, 0.5 = plausible but not sure, 0.0 = no match). Return JSON:\n{{\"mappings\": [{{\"from\": \"lab report name\", \"to_loinc\": \"LOINC code or null if no match\", \"confidence\": 0.0-1.0}}]}}",
-        unresolved_names.join(", "),
-        known_list.join("\n")
+        "/nothink\nI have these biomarker names from a lab report that I could not automatically match to LOINC codes:\n{}\n\nFor each name, provide the most appropriate LOINC code. Use the specimen type to pick the correct LOINC entry (e.g., serum vs urine sodium have different codes). Rate your confidence from 0.0 to 1.0. Return JSON:\n{{\"mappings\": [{{\"from\": \"lab report name\", \"to_loinc\": \"LOINC code or null if no match\", \"confidence\": 0.0-1.0}}]}}",
+        unresolved_list.join("\n")
     );
 
     let response = client
@@ -353,16 +361,24 @@ async fn llm_resolve_markers(
             .unwrap_or((None, 0.0));
 
         if let Some(loinc_code) = loinc {
-            // Find the tracked biomarker
-            if let Some(bm) = tracked.iter().find(|b| b.loinc_code == loinc_code) {
+            // Accept any LOINC code that exists in the catalog
+            let catalog_valid = catalog.get_by_code(&loinc_code).is_some();
+            let bm = crate::db::queries::get_biomarker_by_loinc(pool, &loinc_code)
+                .await.ok().flatten();
+
+            if catalog_valid {
                 let value: f64 = u.value.parse().unwrap_or(0.0);
                 let original_str = u.value.clone();
 
-                let (canonical_value, canonical_unit) = match normalize::normalize_observation(
-                    pool, bm.id, &bm.unit, &original_str, &u.unit,
-                ).await {
-                    Ok(norm) => (norm.value, norm.canonical_unit),
-                    Err(_) => (value, u.unit.clone()),
+                let (canonical_value, canonical_unit) = if let Some(ref bm) = bm {
+                    match normalize::normalize_observation(
+                        pool, bm.id, &bm.unit, &original_str, &u.unit,
+                    ).await {
+                        Ok(norm) => (norm.value, norm.canonical_unit),
+                        Err(_) => (value, u.unit.clone()),
+                    }
+                } else {
+                    (value, u.unit.clone())
                 };
 
                 resolved.push(ExtractedObservation {
@@ -375,7 +391,7 @@ async fn llm_resolve_markers(
                     canonical_value,
                     confidence: conf,
                     detection_limit: None,
-                    specimen: None,
+                    specimen: u.specimen,
                 });
                 continue;
             }
