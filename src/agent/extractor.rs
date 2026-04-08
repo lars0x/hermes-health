@@ -264,7 +264,7 @@ pub async fn run_direct_extraction(
     }
 
     // Auto-dedup unit variants (same LOINC, same marker name, different units)
-    let observations = dedup_unit_variants(&pool, observations).await;
+    let observations = dedup_unit_variants(&catalog, observations);
 
     Ok((ExtractionResult {
         observations,
@@ -284,9 +284,9 @@ pub async fn run_direct_extraction(
 /// Safety checks - all must pass for auto-dedup:
 /// 1. All entries in the group have the same marker_name (case-insensitive)
 /// 2. All entries have different units (after normalization)
-/// 3. At least one entry's unit matches the biomarker's canonical unit
-async fn dedup_unit_variants(
-    pool: &SqlitePool,
+/// 3. At least one entry's unit matches the LOINC catalog's canonical unit
+fn dedup_unit_variants(
+    catalog: &LoincCatalog,
     observations: Vec<ExtractedObservation>,
 ) -> Vec<ExtractedObservation> {
     use crate::ingest::units;
@@ -320,13 +320,12 @@ async fn dedup_unit_variants(
             continue; // Some share a unit - genuine duplicate, leave for human review
         }
 
-        // Safety check 3: find the observation matching canonical unit
-        let bm = crate::db::queries::get_biomarker_by_loinc(pool, loinc_code)
-            .await.ok().flatten();
-        let canonical_unit = match &bm {
-            Some(b) => units::normalize_unit(&b.unit),
+        // Safety check 3: find the observation matching the LOINC catalog's canonical unit
+        let loinc_entry = match catalog.get_by_code(loinc_code) {
+            Some(entry) => entry,
             None => continue,
         };
+        let canonical_unit = units::normalize_unit(&loinc_entry.example_ucum_units);
 
         let keep_idx = indices.iter().enumerate()
             .find(|(i, _)| normalized_units[*i] == canonical_unit)
