@@ -305,6 +305,8 @@ a:hover { text-decoration: underline; }
   border-bottom: 0.5px solid var(--border);
 }
 .obs-table tr:last-child td { border-bottom: none; }
+.obs-table tr.group-sep td { border-top: 2px solid var(--text-secondary); }
+.obs-table .col-matched { background: rgba(59,130,246,0.10); }
 .obs-table .notes { font-size: 11px; color: var(--text-secondary); }
 .obs-table .flag-H { color: var(--red); font-weight: 500; }
 .obs-table .flag-L { color: var(--blue); font-weight: 500; }

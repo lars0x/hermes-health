@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -46,6 +46,7 @@ impl Observation {
         NaiveDate::parse_from_str(&self.observed_at, "%Y-%m-%d").ok()
     }
 
+    #[allow(dead_code)]
     pub fn formatted_value(&self) -> String {
         let prec = self.precision as usize;
         format!("{:.prec$}", self.value)
@@ -140,6 +141,15 @@ pub struct NewObservation {
     pub report_id: Option<i64>,
     #[serde(default)]
     pub import_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ImportOverwrite {
+    pub id: i64,
+    pub import_id: i64,
+    pub loinc_code: String,
+    pub chosen_idx: i64,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

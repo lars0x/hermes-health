@@ -15,7 +15,6 @@ pub struct LabResultRow {
     pub value: serde_json::Value, // number, string ("Negative"), or null
     #[serde(default)]
     pub unit: Option<String>,
-    pub flag: Option<String>,
 }
 
 /// Run direct extraction via raw Ollama API call.
@@ -41,7 +40,7 @@ pub async fn run_direct_extraction(
     };
 
     let prompt = format!(
-        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"flag\": \"H\" or \"L\" or null}}]}}\n\nLab report:\n{}",
+        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str}}]}}\n\nLab report:\n{}",
         text
     );
 
@@ -125,31 +124,36 @@ pub async fn run_direct_extraction(
         let (loinc_code, confidence, bm) = if let Some(bm) = tracked_match {
             (bm.loinc_code.clone(), 1.0_f64, Some(bm.clone()))
         } else {
-            // 2. Fall back to LOINC catalog search
-            let candidates = catalog.search(&row.marker_name, 1);
-            if let Some(best) = candidates.first() {
-                if best.confidence >= 0.80 {
-                    let bm = crate::db::queries::get_biomarker_by_loinc(&pool, &best.loinc_code)
-                        .await
-                        .ok()
-                        .flatten();
-                    (best.loinc_code.clone(), best.confidence, bm)
-                } else {
-                    // Unresolved
-                    unresolved.push(UnresolvedMarker {
-                        marker_name: row.marker_name,
-                        value: value.to_string(),
-                        unit: row.unit.clone().unwrap_or_default(),
-                        reason: format!("Best LOINC match confidence {:.0}% is below threshold", best.confidence * 100.0),
-                    });
-                    continue;
+            // 2. Fuzzy match against tracked biomarkers only (not the full 59K LOINC catalog)
+            let fuzzy_threshold = 0.85;
+            let mut best_score = 0.0_f64;
+            let mut best_bm: Option<&crate::db::models::Biomarker> = None;
+
+            for bm in &tracked {
+                let sim_name = strsim::jaro_winkler(&marker_lower, &bm.name.to_lowercase());
+                let sim_aliases = bm.aliases_vec().iter()
+                    .map(|a| strsim::jaro_winkler(&marker_lower, &a.to_lowercase()))
+                    .fold(0.0_f64, f64::max);
+                let best_sim = sim_name.max(sim_aliases);
+                if best_sim > best_score {
+                    best_score = best_sim;
+                    best_bm = Some(bm);
                 }
+            }
+
+            if best_score >= fuzzy_threshold {
+                let bm = best_bm.unwrap();
+                (bm.loinc_code.clone(), best_score, Some(bm.clone()))
             } else {
                 unresolved.push(UnresolvedMarker {
                     marker_name: row.marker_name,
                     value: original_value_str.clone(),
                     unit: row.unit.clone().unwrap_or_default(),
-                    reason: "No LOINC match found".to_string(),
+                    reason: if best_score > 0.0 {
+                        format!("Best tracked biomarker match {:.0}% below threshold", best_score * 100.0)
+                    } else {
+                        "No tracked biomarker match".to_string()
+                    },
                 });
                 continue;
             }
@@ -179,7 +183,6 @@ pub async fn run_direct_extraction(
             unit: unit_str,
             canonical_unit,
             canonical_value,
-            flag: row.flag,
             confidence,
             detection_limit: None,
         });
@@ -358,7 +361,6 @@ async fn llm_resolve_markers(
                     unit: u.unit,
                     canonical_unit,
                     canonical_value,
-                    flag: None,
                     confidence: conf,
                     detection_limit: None,
                 });

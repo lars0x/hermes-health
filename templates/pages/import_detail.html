@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Import: {{ report.filename }} - Hermes Health{% endblock %}
 {% block content %}
-<div style="max-width: 800px;">
+<div>
   <div style="margin-bottom: 12px;">
     <a href="/import" style="font-size: 12px;">&larr; Back to imports</a>
   </div>
@@ -62,15 +62,17 @@
         {% endif %}
         <table class="obs-table" style="font-size: 12px;">
           <thead>
-            <tr><th>Marker</th><th>Value</th><th>Unit</th><th>LOINC</th><th>Confidence</th></tr>
+            <tr><th style="width:30px; color: var(--text-secondary);">#</th><th>Marker</th><th>Value</th><th>Unit</th><th>LOINC</th><th>LOINC Name</th><th>Confidence</th></tr>
           </thead>
           <tbody>
             {% for obs in extraction.observations %}
             <tr>
+              <td style="color: var(--text-secondary); font-size: 11px;">{{ loop.index }}</td>
               <td style="font-weight: 500;">{{ obs.marker_name }}</td>
               <td>{{ obs.value }}</td>
               <td>{{ obs.unit }}</td>
               <td style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+              <td style="font-size: 11px; color: var(--text-secondary);">{{ loinc_names[obs.loinc_code] }}</td>
               <td>{{ "%.0f"|format(obs.confidence * 100) }}%</td>
             </tr>
             {% endfor %}
@@ -104,10 +106,12 @@
             <thead>
               <tr>
                 <th style="width:30px;"></th>
+                <th style="width:30px; color: var(--text-secondary);">#</th>
                 <th>Marker</th>
                 <th>Value</th>
                 <th>Unit</th>
                 <th>LOINC</th>
+                <th>LOINC Name</th>
                 <th>Confidence</th>
               </tr>
             </thead>
@@ -115,6 +119,7 @@
               {% for obs in skipped_observations %}
               <tr>
                 <td><input type="checkbox" class="skipped-check" data-idx="{{ obs.idx }}"></td>
+                <td style="color: var(--text-secondary); font-size: 11px;">{{ loop.index }}</td>
                 <td style="font-weight: 500;">{{ obs.marker_name }}</td>
                 <td>{{ obs.original_value }}{% if not obs.original_value %}{{ obs.value }}{% endif %}</td>
                 <td>
@@ -124,6 +129,7 @@
                   {% endif %}
                 </td>
                 <td style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+                <td style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
                 <td>
                   {% if obs.confidence >= 0.85 %}
                     <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}%</span>

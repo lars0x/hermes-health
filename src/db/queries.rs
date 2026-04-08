@@ -67,6 +67,7 @@ pub async fn update_biomarker_aliases(pool: &SqlitePool, id: i64, aliases: &[Str
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn update_biomarker_ranges(
     pool: &SqlitePool,
     id: i64,
@@ -90,6 +91,7 @@ pub async fn update_biomarker_ranges(
 
 // --- Observations ---
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_observation(
     pool: &SqlitePool,
     biomarker_id: i64,
@@ -182,12 +184,39 @@ pub async fn list_all_observations(
     Ok(observations)
 }
 
+#[allow(dead_code)]
 pub async fn delete_observation(pool: &SqlitePool, id: i64) -> Result<()> {
     sqlx::query("DELETE FROM observations WHERE id = ?")
         .bind(id)
         .execute(pool)
         .await?;
     Ok(())
+}
+
+pub async fn count_observations_for_import(pool: &SqlitePool, import_id: i64) -> Result<i64> {
+    let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM observations WHERE import_id = ?")
+        .bind(import_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(result.0)
+}
+
+pub async fn list_observations_for_import(pool: &SqlitePool, import_id: i64) -> Result<Vec<Observation>> {
+    let observations = sqlx::query_as::<_, Observation>(
+        "SELECT o.* FROM observations o WHERE o.import_id = ? ORDER BY o.id"
+    )
+    .bind(import_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(observations)
+}
+
+pub async fn delete_observations_by_import(pool: &SqlitePool, import_id: i64) -> Result<u64> {
+    let result = sqlx::query("DELETE FROM observations WHERE import_id = ?")
+        .bind(import_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
 }
 
 // --- Unit Conversions ---
@@ -230,6 +259,7 @@ pub async fn get_unit_conversion(
     Ok(result)
 }
 
+#[allow(dead_code)]
 pub async fn list_unit_conversions_for_biomarker(
     pool: &SqlitePool,
     biomarker_id: i64,
@@ -273,6 +303,7 @@ pub async fn get_report_by_hash(pool: &SqlitePool, file_hash: &str) -> Result<Op
     Ok(result)
 }
 
+#[allow(dead_code)]
 pub async fn update_report_status(
     pool: &SqlitePool,
     id: i64,
@@ -296,6 +327,7 @@ pub async fn get_report_by_id(pool: &SqlitePool, id: i64) -> Result<Report> {
         .ok_or_else(|| HermesError::NotFound(format!("report id={id}")))
 }
 
+#[allow(dead_code)]
 pub async fn list_reports(pool: &SqlitePool) -> Result<Vec<Report>> {
     let reports = sqlx::query_as::<_, Report>("SELECT * FROM reports ORDER BY imported_at DESC")
         .fetch_all(pool)
@@ -303,6 +335,8 @@ pub async fn list_reports(pool: &SqlitePool) -> Result<Vec<Report>> {
     Ok(reports)
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub async fn update_report_extraction(
     pool: &SqlitePool,
     id: i64,
@@ -356,6 +390,7 @@ pub async fn list_imports(pool: &SqlitePool) -> Result<Vec<Import>> {
     Ok(imports)
 }
 
+#[allow(dead_code)]
 pub async fn list_imports_for_report(pool: &SqlitePool, report_id: i64) -> Result<Vec<Import>> {
     let imports = sqlx::query_as::<_, Import>(
         "SELECT * FROM imports WHERE report_id = ? ORDER BY created_at DESC"
@@ -375,6 +410,7 @@ pub async fn update_import_status(pool: &SqlitePool, id: i64, status: &str) -> R
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn update_import_result(
     pool: &SqlitePool,
     id: i64,
@@ -398,6 +434,35 @@ pub async fn update_import_result(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+// --- Import Overwrites ---
+
+pub async fn upsert_import_overwrite(
+    pool: &SqlitePool,
+    import_id: i64,
+    loinc_code: &str,
+    chosen_idx: i64,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO import_overwrites (import_id, loinc_code, chosen_idx) VALUES (?, ?, ?)"
+    )
+    .bind(import_id)
+    .bind(loinc_code)
+    .bind(chosen_idx)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn list_import_overwrites(pool: &SqlitePool, import_id: i64) -> Result<Vec<ImportOverwrite>> {
+    let overwrites = sqlx::query_as::<_, ImportOverwrite>(
+        "SELECT * FROM import_overwrites WHERE import_id = ? ORDER BY id"
+    )
+    .bind(import_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(overwrites)
 }
 
 // --- Interventions ---
@@ -476,6 +541,7 @@ pub async fn end_intervention(pool: &SqlitePool, id: i64, ended_at: &str) -> Res
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn delete_intervention_targets(pool: &SqlitePool, intervention_id: i64) -> Result<()> {
     sqlx::query("DELETE FROM intervention_biomarker_targets WHERE intervention_id = ?")
         .bind(intervention_id)
@@ -484,6 +550,7 @@ pub async fn delete_intervention_targets(pool: &SqlitePool, intervention_id: i64
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn insert_intervention_target(
     pool: &SqlitePool,
     intervention_id: i64,

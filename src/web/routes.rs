@@ -109,6 +109,10 @@ pub fn router() -> Router<AppState> {
             post(handlers::report::decline),
         )
         .route(
+            "/api/v1/imports/{id}/resolve-duplicate",
+            post(handlers::report::resolve_duplicate),
+        )
+        .route(
             "/api/v1/imports/{id}/map",
             post(handlers::report::map_marker),
         )

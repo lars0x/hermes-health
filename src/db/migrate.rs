@@ -4,6 +4,7 @@ use crate::error::Result;
 
 const INIT_SQL: &str = include_str!("../../migrations/001_init.sql");
 const IMPORTS_SQL: &str = include_str!("../../migrations/003_imports_table.sql");
+const OVERWRITES_SQL: &str = include_str!("../../migrations/004_import_overwrites.sql");
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::raw_sql(INIT_SQL).execute(pool).await?;
@@ -45,6 +46,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+
+    // Migration 004: import_overwrites table
+    sqlx::raw_sql(OVERWRITES_SQL).execute(pool).await?;
 
     tracing::info!("Database migrations applied");
     Ok(())

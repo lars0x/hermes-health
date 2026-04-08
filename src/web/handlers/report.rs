@@ -222,7 +222,7 @@ pub async fn import_detail(
         None
     };
 
-    // Find duplicate LOINC codes in extraction
+    // Find duplicate LOINC codes and load human overwrites
     let duplicate_loinc_codes: Vec<String> = if let Some(ref ext) = extraction {
         let mut counts = std::collections::HashMap::new();
         for obs in &ext.observations {
@@ -232,6 +232,33 @@ pub async fn import_detail(
     } else {
         vec![]
     };
+
+    let overwrites = queries::list_import_overwrites(&state.pool, id).await.unwrap_or_default();
+    let overwrite_map: std::collections::HashMap<String, usize> = overwrites.iter()
+        .map(|o| (o.loinc_code.clone(), o.chosen_idx as usize))
+        .collect();
+
+    // Look up LOINC long common names for all codes in extraction
+    let mut loinc_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Some(ref ext) = extraction {
+        for obs in &ext.observations {
+            if !loinc_names.contains_key(&obs.loinc_code) {
+                if let Some(entry) = state.catalog.get_by_code(&obs.loinc_code) {
+                    loinc_names.insert(obs.loinc_code.clone(), entry.long_common_name.clone());
+                }
+            }
+        }
+    }
+
+    let (matched_observations, duplicate_observations, dismissed_observations) = if let Some(ref ext) = extraction {
+        build_observation_lists(ext, &duplicate_loinc_codes, &overwrite_map, &loinc_names)
+    } else {
+        (vec![], vec![], vec![])
+    };
+
+    let matched_count = matched_observations.len();
+    let duplicate_count = duplicate_observations.len();
+    let dismissed_count = dismissed_observations.len();
 
     let error_message = if import.status == "failed" {
         import.raw_extraction.as_deref()
@@ -253,7 +280,9 @@ pub async fn import_detail(
             }
             ext.observations.iter().enumerate()
                 .filter(|(_, obs)| !committed_loinc_codes.contains(&obs.loinc_code))
-                .map(|(idx, obs)| minijinja::context! {
+                .map(|(idx, obs)| {
+                    let biomarker_name = loinc_names.get(&obs.loinc_code).cloned().unwrap_or_default();
+                    minijinja::context! {
                     idx => idx,
                     marker_name => obs.marker_name,
                     value => obs.value,
@@ -263,8 +292,8 @@ pub async fn import_detail(
                     canonical_unit => obs.canonical_unit,
                     loinc_code => obs.loinc_code,
                     confidence => obs.confidence,
-                    flag => obs.flag,
-                })
+                    biomarker_name => biomarker_name,
+                }})
                 .collect::<Vec<_>>()
         } else {
             vec![]
@@ -283,7 +312,13 @@ pub async fn import_detail(
         extraction => extraction,
         import_id => id,
         error_message => error_message,
-        duplicate_loinc_codes => duplicate_loinc_codes,
+        loinc_names => loinc_names,
+        matched_observations => matched_observations,
+        matched_count => matched_count,
+        duplicate_observations => duplicate_observations,
+        duplicate_count => duplicate_count,
+        dismissed_observations => dismissed_observations,
+        dismissed_count => dismissed_count,
         skipped_observations => skipped_observations,
         skipped_count => skipped_count,
     };
@@ -418,6 +453,83 @@ pub async fn decline(
     ))
 }
 
+// --- Resolve duplicate ---
+
+pub async fn resolve_duplicate(
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+    axum::Form(form): axum::Form<ResolveDuplicateForm>,
+) -> Result<Html<String>, HermesError> {
+    let import = queries::get_import_by_id(&state.pool, id).await?;
+    if import.status != "extracted" {
+        return Err(HermesError::Validation("Import is not in review".to_string()));
+    }
+
+    queries::upsert_import_overwrite(&state.pool, id, &form.loinc_code, form.chosen_idx as i64).await?;
+
+    // Re-render the review table with updated state
+    render_review_table(id, &state).await
+}
+
+async fn render_review_table(
+    id: i64,
+    state: &AppState,
+) -> Result<Html<String>, HermesError> {
+    let import = queries::get_import_by_id(&state.pool, id).await?;
+    let report = queries::get_report_by_id(&state.pool, import.report_id).await?;
+    let extraction = get_extraction_result_from_import(&import).ok();
+
+    let duplicate_loinc_codes: Vec<String> = if let Some(ref ext) = extraction {
+        let mut counts = std::collections::HashMap::new();
+        for obs in &ext.observations {
+            *counts.entry(obs.loinc_code.clone()).or_insert(0) += 1;
+        }
+        counts.into_iter().filter(|(_, c)| *c > 1).map(|(k, _)| k).collect()
+    } else {
+        vec![]
+    };
+
+    let overwrites = queries::list_import_overwrites(&state.pool, id).await.unwrap_or_default();
+    let overwrite_map: std::collections::HashMap<String, usize> = overwrites.iter()
+        .map(|o| (o.loinc_code.clone(), o.chosen_idx as usize))
+        .collect();
+
+    let mut loinc_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Some(ref ext) = extraction {
+        for obs in &ext.observations {
+            if !loinc_names.contains_key(&obs.loinc_code) {
+                if let Some(entry) = state.catalog.get_by_code(&obs.loinc_code) {
+                    loinc_names.insert(obs.loinc_code.clone(), entry.long_common_name.clone());
+                }
+            }
+        }
+    }
+
+    let (matched_observations, duplicate_observations, dismissed_observations) = if let Some(ref ext) = extraction {
+        build_observation_lists(ext, &duplicate_loinc_codes, &overwrite_map, &loinc_names)
+    } else {
+        (vec![], vec![], vec![])
+    };
+
+    let matched_count = matched_observations.len();
+    let duplicate_count = duplicate_observations.len();
+    let dismissed_count = dismissed_observations.len();
+
+    let ctx = minijinja::context! {
+        report => report,
+        extraction => extraction,
+        import_id => id,
+        loinc_names => loinc_names,
+        matched_observations => matched_observations,
+        matched_count => matched_count,
+        duplicate_observations => duplicate_observations,
+        duplicate_count => duplicate_count,
+        dismissed_observations => dismissed_observations,
+        dismissed_count => dismissed_count,
+    };
+    state.templates.render("components/review_table.html", ctx).map(Html)
+}
+
 // --- LOINC mapping ---
 
 pub async fn map_marker(
@@ -450,9 +562,98 @@ pub struct CommitForm {
 }
 
 #[derive(serde::Deserialize)]
+pub struct ResolveDuplicateForm {
+    pub loinc_code: String,
+    pub chosen_idx: usize,
+}
+
+#[derive(serde::Deserialize)]
 pub struct MapForm {
     pub marker_name: String,
     pub loinc_code: String,
+}
+
+// --- Observation list splitting ---
+
+fn build_observation_lists(
+    ext: &ExtractionResult,
+    duplicate_loinc_codes: &[String],
+    overwrite_map: &std::collections::HashMap<String, usize>,
+    loinc_names: &std::collections::HashMap<String, String>,
+) -> (Vec<minijinja::Value>, Vec<minijinja::Value>, Vec<minijinja::Value>) {
+    let mut matched = Vec::new();
+    let mut dupe_indices: Vec<(String, usize)> = Vec::new();
+    let mut dismissed = Vec::new();
+
+    for (idx, obs) in ext.observations.iter().enumerate() {
+        if !duplicate_loinc_codes.contains(&obs.loinc_code) {
+            let biomarker_name = loinc_names.get(&obs.loinc_code).cloned().unwrap_or_default();
+            matched.push(minijinja::context! {
+                idx => idx,
+                marker_name => obs.marker_name,
+                value => obs.value,
+                original_value => obs.original_value,
+                unit => obs.unit,
+                canonical_value => obs.canonical_value,
+                canonical_unit => obs.canonical_unit,
+                loinc_code => obs.loinc_code,
+                confidence => obs.confidence,
+                biomarker_name => biomarker_name,
+                human_resolved => false,
+            });
+        } else if let Some(&chosen_idx) = overwrite_map.get(&obs.loinc_code) {
+            if idx == chosen_idx {
+                let biomarker_name = loinc_names.get(&obs.loinc_code).cloned().unwrap_or_default();
+                matched.push(minijinja::context! {
+                    idx => idx,
+                    marker_name => obs.marker_name,
+                    value => obs.value,
+                    original_value => obs.original_value,
+                    unit => obs.unit,
+                    canonical_value => obs.canonical_value,
+                    canonical_unit => obs.canonical_unit,
+                    loinc_code => obs.loinc_code,
+                    confidence => obs.confidence,
+                    biomarker_name => biomarker_name,
+                    human_resolved => true,
+                });
+            } else {
+                dismissed.push(minijinja::context! {
+                    marker_name => obs.marker_name,
+                    value => if obs.original_value.is_empty() { obs.value.to_string() } else { obs.original_value.clone() },
+                    unit => obs.unit,
+                    loinc_code => obs.loinc_code,
+                    reason => "Duplicate - another match selected by user",
+                });
+            }
+        } else {
+            dupe_indices.push((obs.loinc_code.clone(), idx));
+        }
+    }
+
+    dupe_indices.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut prev_loinc = String::new();
+    let dupes: Vec<minijinja::Value> = dupe_indices.into_iter().map(|(loinc, idx)| {
+        let obs = &ext.observations[idx];
+        let group_first = loinc != prev_loinc;
+        prev_loinc = loinc.clone();
+        let biomarker_name = loinc_names.get(&loinc).cloned().unwrap_or_default();
+        minijinja::context! {
+            idx => idx,
+            marker_name => obs.marker_name,
+            value => obs.value,
+            original_value => obs.original_value,
+            unit => obs.unit,
+            canonical_value => obs.canonical_value,
+            canonical_unit => obs.canonical_unit,
+            loinc_code => obs.loinc_code,
+            confidence => obs.confidence,
+            group_first => group_first,
+            biomarker_name => biomarker_name,
+        }
+    }).collect();
+
+    (matched, dupes, dismissed)
 }
 
 // --- Helpers ---

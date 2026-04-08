@@ -5,8 +5,9 @@
       Review extraction
       <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
         {% if report.model_used %} &middot; {{ report.model_used }}{% endif %}
-        {% if report.extracted_count %} &middot; {{ report.extracted_count }} extracted{% endif %}
-        {% if report.unresolved_count %} &middot; {{ report.unresolved_count }} unresolved{% endif %}
+        {% if matched_count %} &middot; {{ matched_count }} matched{% endif %}
+        {% if duplicate_count %} &middot; {{ duplicate_count }} duplicates{% endif %}
+        {% if extraction.unresolved or dismissed_count %} &middot; {{ (extraction.unresolved|length) + dismissed_count }} unresolved{% endif %}
       </span>
     </div>
     <div style="display: flex; gap: 8px;">
@@ -39,31 +40,31 @@
       {% endif %}
     </div>
 
-    <table class="obs-table" style="font-size: 12px;">
+    {# --- Matched observations --- #}
+    {% if matched_observations %}
+    <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px; color: var(--text-primary);">
+      Matched <span style="color: var(--text-secondary); font-weight: normal;">({{ matched_count }})</span>
+    </div>
+    <table class="obs-table" style="font-size: 12px; margin-bottom: 16px;">
       <thead>
         <tr>
           <th style="width:30px;"></th>
+          <th style="width:30px; color: var(--text-secondary);">#</th>
           <th>Marker</th>
           <th>Value</th>
           <th>Unit</th>
-          <th>Flag</th>
-          <th>LOINC</th>
-          <th>Confidence</th>
-          <th>Action</th>
+          <th class="col-matched">LOINC</th>
+          <th class="col-matched">LOINC Name</th>
+          <th class="col-matched">Confidence</th>
         </tr>
       </thead>
       <tbody>
-        {% for obs in extraction.observations %}
-        {% set is_duplicate = obs.loinc_code in duplicate_loinc_codes %}
-        <tr {% if is_duplicate %}style="background: rgba(226,75,74,0.06);"{% endif %}>
-          <td><input type="checkbox" class="obs-check" data-idx="{{ loop.index0 }}"
-                     {% if obs.confidence >= 0.85 and not is_duplicate %}checked{% endif %}></td>
-          <td style="font-weight: 500;">
-            {{ obs.marker_name }}
-            {% if is_duplicate %}
-              <div style="font-size: 10px; color: var(--red); margin-top: 2px;">&#9888; Duplicate LOINC - uncheck one</div>
-            {% endif %}
-          </td>
+        {% for obs in matched_observations %}
+        <tr>
+          <td><input type="checkbox" class="obs-check" data-idx="{{ obs.idx }}"
+                     {% if obs.confidence >= 0.85 %}checked{% endif %}></td>
+          <td style="color: var(--text-secondary); font-size: 11px;">{{ loop.index }}</td>
+          <td style="font-weight: 500;">{{ obs.marker_name }}</td>
           <td>{{ obs.original_value }}{% if not obs.original_value %} {{ obs.value }}{% endif %}</td>
           <td>
             {{ obs.unit }}
@@ -71,11 +72,63 @@
               <span class="text-blue" style="font-size: 10px;">&rarr;{{ obs.canonical_value }} {{ obs.canonical_unit }}</span>
             {% endif %}
           </td>
-          <td>
-            {% if obs.flag == "H" %}<span class="flag-H">H</span>{% elif obs.flag == "L" %}<span class="flag-L">L</span>{% else %}&mdash;{% endif %}
+          <td class="col-matched" style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+          <td class="col-matched" style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
+          <td class="col-matched">
+            {% if obs.human_resolved %}
+              <span class="pill" style="background: var(--info-bg); color: var(--info-text); font-size: 10px;">user matched</span>
+            {% elif obs.confidence >= 0.95 %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% exact</span>
+            {% elif obs.confidence >= 0.90 %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% alias</span>
+            {% elif obs.confidence >= 0.85 %}
+              <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% fuzzy</span>
+            {% else %}
+              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% low</span>
+            {% endif %}
           </td>
-          <td style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {# --- Duplicate LOINC observations --- #}
+    {% if duplicate_observations %}
+    <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px; color: var(--red);">
+      Duplicates <span style="color: var(--text-secondary); font-weight: normal;">({{ duplicate_count }}) - select one per LOINC code</span>
+    </div>
+    <table class="obs-table" style="font-size: 12px; margin-bottom: 16px;">
+      <thead>
+        <tr>
+          <th style="width:30px;"></th>
+          <th style="width:30px; color: var(--text-secondary);">#</th>
+          <th>Marker</th>
+          <th>Value</th>
+          <th>Unit</th>
+          <th class="col-matched">LOINC</th>
+          <th class="col-matched">LOINC Name</th>
+          <th class="col-matched">Confidence</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obs in duplicate_observations %}
+        {% set group_sep = obs.group_first and not loop.first %}
+        <tr style="background: rgba(226,75,74,0.06);" {% if group_sep %}class="group-sep"{% endif %}>
+          <td><input type="checkbox" class="obs-check" data-idx="{{ obs.idx }}"></td>
+          <td style="color: var(--text-secondary); font-size: 11px;">{{ loop.index }}</td>
+          <td style="font-weight: 500;">{{ obs.marker_name }}</td>
+          <td>{{ obs.original_value }}{% if not obs.original_value %} {{ obs.value }}{% endif %}</td>
           <td>
+            {{ obs.unit }}
+            {% if obs.unit != obs.canonical_unit %}
+              <span class="text-blue" style="font-size: 10px;">&rarr;{{ obs.canonical_value }} {{ obs.canonical_unit }}</span>
+            {% endif %}
+          </td>
+          <td class="col-matched" style="font-family: var(--mono); font-size: 11px;">{{ obs.loinc_code }}</td>
+          <td class="col-matched" style="font-size: 11px; color: var(--text-secondary);">{{ obs.biomarker_name }}</td>
+          <td class="col-matched">
             {% if obs.confidence >= 0.95 %}
               <span class="pill" style="background: var(--green-bg); color: #0F6E56; font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% exact</span>
             {% elif obs.confidence >= 0.90 %}
@@ -86,19 +139,55 @@
               <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">{{ "%.0f"|format(obs.confidence * 100) }}% low</span>
             {% endif %}
           </td>
+          <td>
+            <button type="button" class="pill-btn" style="font-size: 10px; padding: 2px 8px;"
+                    hx-post="/api/v1/imports/{{ import_id }}/resolve-duplicate"
+                    hx-vals='{"loinc_code": "{{ obs.loinc_code }}", "chosen_idx": "{{ obs.idx }}"}'
+                    hx-target="#detail-content"
+                    hx-swap="innerHTML">
+              Match
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {# --- Unresolved markers + dismissed duplicates --- #}
+    {% if extraction.unresolved or dismissed_observations %}
+    <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px; color: var(--amber-dark);">
+      Unresolved <span style="color: var(--text-secondary); font-weight: normal;">({{ (extraction.unresolved|length) + dismissed_count }})</span>
+    </div>
+    <table class="obs-table" style="font-size: 12px;">
+      <thead>
+        <tr>
+          <th style="width:30px; color: var(--text-secondary);">#</th>
+          <th>Marker</th>
+          <th>Value</th>
+          <th>Unit</th>
+          <th>Reason</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in dismissed_observations %}
+        <tr style="background: rgba(250,238,218,0.15);">
+          <td style="color: var(--text-secondary); font-size: 11px;">{{ loop.index }}</td>
+          <td style="font-weight: 500; color: var(--text-secondary);">{{ d.marker_name }} <span style="font-weight: normal; font-size: 10px; font-family: var(--mono);">{{ d.loinc_code }}</span></td>
+          <td>{{ d.value }}</td>
+          <td>{{ d.unit }}</td>
+          <td style="font-size: 11px; color: var(--text-secondary);">{{ d.reason }}</td>
           <td></td>
         </tr>
         {% endfor %}
-
         {% for u in extraction.unresolved %}
         <tr style="background: rgba(250,238,218,0.15);">
-          <td><input type="checkbox" class="obs-check" data-idx="-1" disabled></td>
+          <td style="color: var(--text-secondary); font-size: 11px;">{{ loop.index + dismissed_count }}</td>
           <td style="font-weight: 500; color: var(--amber-dark);">{{ u.marker_name }}</td>
           <td>{{ u.value }}</td>
           <td>{{ u.unit }}</td>
-          <td>&mdash;</td>
-          <td style="color: var(--amber-dark);">?</td>
-          <td><span class="pill" style="background: var(--amber-bg); color: var(--amber-dark); font-size: 10px;">unresolved</span></td>
+          <td style="font-size: 11px; color: var(--text-secondary);">{{ u.reason }}</td>
           <td>
             <span style="font-size: 11px; color: var(--amber-dark); cursor: pointer; text-decoration: underline;"
                   onclick="promptMap('{{ u.marker_name }}', {{ import_id }})">map</span>
@@ -107,6 +196,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% endif %}
   </form>
 </div>
 
