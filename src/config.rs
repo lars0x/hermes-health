@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{HermesError, Result};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct HermesConfig {
     pub server: ServerConfig,
@@ -35,6 +35,8 @@ pub struct OllamaConfig {
     pub model: String,
     pub temperature: f64,
     pub timeout_seconds: u64,
+    pub num_ctx: u32,
+    pub num_predict: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,7 +47,7 @@ pub struct ExtractionConfig {
     pub validation_strictness: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct UserConfig {
     pub date_of_birth: Option<String>,
@@ -67,19 +69,6 @@ pub struct TrendConfig {
     pub projection_horizon_days: u32,
 }
 
-impl Default for HermesConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            database: DatabaseConfig::default(),
-            ollama: OllamaConfig::default(),
-            extraction: ExtractionConfig::default(),
-            user: UserConfig::default(),
-            display: DisplayConfig::default(),
-            trends: TrendConfig::default(),
-        }
-    }
-}
 
 impl Default for ServerConfig {
     fn default() -> Self {
@@ -105,6 +94,8 @@ impl Default for OllamaConfig {
             model: "qwen3.5:27b-64k".to_string(),
             temperature: 0.0,
             timeout_seconds: 300,
+            num_ctx: 131072,
+            num_predict: 8192,
         }
     }
 }
@@ -119,14 +110,6 @@ impl Default for ExtractionConfig {
     }
 }
 
-impl Default for UserConfig {
-    fn default() -> Self {
-        Self {
-            date_of_birth: None,
-            sex: None,
-        }
-    }
-}
 
 impl Default for DisplayConfig {
     fn default() -> Self {

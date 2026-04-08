@@ -31,7 +31,7 @@ pub async fn run_direct_extraction(
     tracing::info!("Running direct extraction with model {}", config.ollama.model);
 
     // Truncate to avoid context length issues (find a valid UTF-8 boundary)
-    let max_len = 8000;
+    let max_len = 48_000;
     let text = if raw_text.len() > max_len {
         let mut end = max_len;
         while end > 0 && !raw_text.is_char_boundary(end) {
@@ -66,9 +66,9 @@ pub async fn run_direct_extraction(
             "format": "json",
             "think": false,
             "options": {
-                "temperature": 0.0,
-                "num_predict": 8192,
-                "num_ctx": 16384
+                "temperature": config.ollama.temperature,
+                "num_predict": config.ollama.num_predict,
+                "num_ctx": config.ollama.num_ctx
             }
         }))
         .send()
@@ -249,9 +249,9 @@ async fn llm_resolve_markers(
             "format": "json",
             "think": false,
             "options": {
-                "temperature": 0.0,
+                "temperature": config.ollama.temperature,
                 "num_predict": 2048,
-                "num_ctx": 8192
+                "num_ctx": config.ollama.num_ctx
             }
         }))
         .send()
@@ -406,9 +406,9 @@ async fn llm_extract_test_date(
             "format": "json",
             "think": false,
             "options": {
-                "temperature": 0.0,
+                "temperature": config.ollama.temperature,
                 "num_predict": 256,
-                "num_ctx": 4096
+                "num_ctx": config.ollama.num_ctx
             }
         }))
         .send()

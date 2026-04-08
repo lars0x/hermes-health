@@ -7,9 +7,11 @@ path = "data/hermes.db"
 
 [ollama]
 url = "http://100.95.56.105:11434"
-model = "qwen3.5:27b-64k"
+model = "qwen3.5:27b-128k"
 temperature = 0.0
 timeout_seconds = 300
+num_ctx = 131072
+num_predict = 8192
 
 [extraction]
 mode = "direct"
