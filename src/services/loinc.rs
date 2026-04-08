@@ -244,18 +244,33 @@ impl LoincCatalog {
     /// Search specifically for quantitative lab tests (Qn scale type, Ser/Plas system)
     #[allow(dead_code)]
     pub fn search_lab(&self, query: &str, max_results: usize) -> Vec<LoincCandidate> {
-        let all = self.search(query, max_results * 3);
-        all.into_iter()
-            .filter(|c| {
-                if let Some(entry) = self.get_by_code(&c.loinc_code) {
-                    entry.scale_typ == "Qn"
-                        && (entry.system.contains("Ser") || entry.system.contains("Plas") || entry.system.contains("Bld") || entry.system.contains("Ur"))
-                } else {
-                    false
+        let all = self.search(query, max_results * 10);
+        let mut filtered: Vec<(LoincCandidate, u8)> = all.into_iter()
+            .filter_map(|c| {
+                let entry = self.get_by_code(&c.loinc_code)?;
+                if entry.scale_typ != "Qn" {
+                    return None;
                 }
+                // Prefer serum/plasma/blood over urine
+                let priority = if entry.system.contains("Ser") || entry.system.contains("Plas") {
+                    0
+                } else if entry.system.contains("Bld") {
+                    1
+                } else if entry.system.contains("Ur") {
+                    2
+                } else {
+                    return None;
+                };
+                Some((c, priority))
             })
-            .take(max_results)
-            .collect()
+            .collect();
+        // Sort by confidence desc, then specimen priority asc
+        filtered.sort_by(|a, b| {
+            b.0.confidence.partial_cmp(&a.0.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.cmp(&b.1))
+        });
+        filtered.into_iter().map(|(c, _)| c).take(max_results).collect()
     }
 }
 
@@ -293,5 +308,21 @@ mod tests {
         // Fuzzy match may or may not find it depending on threshold
         // This test just verifies it doesn't crash
         let _ = results;
+    }
+
+    #[test]
+    fn test_search_lab_sodium() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.search_lab("Sodium", 3);
+        assert!(!results.is_empty(), "search_lab should find Sodium");
+        assert_eq!(results[0].loinc_code, "2951-2");
+    }
+
+    #[test]
+    fn test_search_lab_potassium() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.search_lab("Potassium", 3);
+        assert!(!results.is_empty(), "search_lab should find Potassium");
+        assert_eq!(results[0].loinc_code, "2823-3");
     }
 }
