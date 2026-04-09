@@ -22,7 +22,7 @@ pub struct LabResultRow {
 /// Run direct extraction via raw Ollama API call.
 /// More reliable than Rig's Extractor for structured JSON output.
 pub async fn run_direct_extraction(
-    pool: SqlitePool,
+    _pool: SqlitePool,
     catalog: Arc<LoincCatalog>,
     config: Arc<HermesConfig>,
     raw_text: &str,
@@ -170,7 +170,7 @@ pub async fn run_direct_extraction(
         })
         .collect();
 
-    let resolve_future = llm_resolve_markers(&client, &config, &catalog, &pool, all_as_unresolved);
+    let resolve_future = llm_resolve_markers(&client, &config, &catalog, all_as_unresolved);
     let date_future = llm_extract_test_date(&client, &config, raw_text);
 
     let ((llm_resolved, _llm_unresolved, resolve_log), (test_date, date_log)) =
@@ -481,7 +481,6 @@ async fn llm_resolve_markers(
     client: &reqwest::Client,
     config: &HermesConfig,
     catalog: &LoincCatalog,
-    pool: &SqlitePool,
     unresolved: Vec<UnresolvedMarker>,
 ) -> (Vec<ExtractedObservation>, Vec<UnresolvedMarker>, Option<crate::agent::LlmLogEntry>) {
     use crate::agent::{ConversationMessage, ToolCallRecord};
@@ -639,7 +638,7 @@ Confidence guide:
     let max_turns = config.extraction.resolve_max_turns;
     let mut turn = 0u32;
     let mut total_tool_calls = 0u32;
-    let mut final_content;
+    let mut final_content = String::new();
     let mut query_cache: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
 
     loop {
@@ -673,8 +672,7 @@ Confidence guide:
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!("LLM resolve request failed on turn {}: {e}", turn);
-                let log_entry = build_resolve_log(conversation_log, total_tool_calls, turn);
-                return (vec![], unresolved, Some(log_entry));
+                break;
             }
         };
 
@@ -682,8 +680,7 @@ Confidence guide:
             Ok(b) => b,
             Err(e) => {
                 tracing::warn!("Failed to parse LLM resolve response on turn {}: {e}", turn);
-                let log_entry = build_resolve_log(conversation_log, total_tool_calls, turn);
-                return (vec![], unresolved, Some(log_entry));
+                break;
             }
         };
 
@@ -691,8 +688,7 @@ Confidence guide:
             Some(m) => m,
             None => {
                 tracing::warn!("No message in LLM resolve response on turn {}", turn);
-                let log_entry = build_resolve_log(conversation_log, total_tool_calls, turn);
-                return (vec![], unresolved, Some(log_entry));
+                break;
             }
         };
 
@@ -770,18 +766,65 @@ Confidence guide:
         break;
     }
 
-    // If the model stopped without producing parseable JSON, nudge it once
-    if parse_resolve_mappings(&final_content).is_empty() && turn <= max_turns {
-        tracing::info!("Model returned no parseable mappings, requesting final answer");
-        let nudge = "You have finished searching. Now return your final answer as JSON: {\"mappings\": [{\"from\": \"marker name\", \"to_loinc\": \"LOINC code or null\", \"confidence\": 0.0-1.0, \"reasoning\": \"brief\"}]}";
-        messages.push(serde_json::json!({"role": "user", "content": nudge}));
+    // If the model stopped without producing parseable JSON, try a compact summary request.
+    // This handles the case where the full conversation exceeded context limits and the
+    // API call failed after tool-calling turns. We build a fresh short conversation with
+    // just the search results summarized, asking for the final JSON.
+    if parse_resolve_mappings(&final_content).is_empty() && total_tool_calls > 0 {
+        tracing::info!("No parseable mappings after {} turns - sending compact summary request", turn);
+
+        // Build a summary of all search results from the conversation log
+        let mut search_summary = String::new();
+        let mut current_query = String::new();
+        for msg in &conversation_log {
+            if let Some(ref calls) = msg.tool_calls {
+                for tc in calls {
+                    if tc.name == "search_loinc" {
+                        current_query = tc.arguments.get("query")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("").to_string();
+                    }
+                }
+            }
+            if msg.role == "tool" && !current_query.is_empty() {
+                // Extract just the top candidate from each tool result
+                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&msg.content) {
+                    if let Some(candidates) = result.get("candidates").and_then(|v| v.as_array()) {
+                        if let Some(top) = candidates.first() {
+                            let code = top.get("loinc_code").and_then(|v| v.as_str()).unwrap_or("?");
+                            let name = top.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                            search_summary.push_str(&format!(
+                                "- Query \"{}\": top match {} ({})\n", current_query, code, name
+                            ));
+                        } else {
+                            search_summary.push_str(&format!(
+                                "- Query \"{}\": no results\n", current_query
+                            ));
+                        }
+                    }
+                }
+                current_query.clear();
+            }
+        }
+
+        let compact_prompt = format!(
+            "You searched the LOINC catalog for these markers:\n\n{}\n\nHere is a summary of your search results:\n{}\n\nNow provide the final JSON mappings for ALL markers above.\n\
+            Return JSON: {{\"mappings\": [{{\"from\": \"original marker name\", \"to_loinc\": \"LOINC code or null\", \"confidence\": 0.0-1.0, \"reasoning\": \"brief\"}}]}}",
+            unresolved_list.join("\n"),
+            search_summary
+        );
+
+        let compact_messages = vec![
+            serde_json::json!({"role": "user", "content": compact_prompt}),
+        ];
+
         conversation_log.push(ConversationMessage {
-            role: "user".into(), content: nudge.to_string(), tool_calls: None, thinking: None,
+            role: "user".into(), content: compact_prompt.clone(), tool_calls: None, thinking: None,
         });
 
         let request_body = serde_json::json!({
             "model": config.ollama.model,
-            "messages": messages,
+            "messages": compact_messages,
             "stream": false,
             "format": "json",
             "options": {
@@ -807,6 +850,7 @@ Confidence guide:
                     });
                     final_content = content.to_string();
                     turn += 1;
+                    tracing::info!("Compact summary request produced {} chars", content.len());
                 }
             }
         }
@@ -834,33 +878,17 @@ Confidence guide:
             .unwrap_or((None, 0.0));
 
         if let Some(loinc_code) = loinc {
-            let catalog_valid = catalog.get_by_code(&loinc_code).is_some();
-            let bm = crate::db::queries::get_biomarker_by_loinc(pool, &loinc_code)
-                .await.ok().flatten();
-
-            if catalog_valid {
+            if catalog.get_by_code(&loinc_code).is_some() {
                 let value: f64 = u.value.parse().unwrap_or(0.0);
-                let original_str = u.value.clone();
-
-                let (canonical_value, canonical_unit) = if let Some(ref bm) = bm {
-                    match normalize::normalize_observation(
-                        pool, bm.id, &bm.unit, &original_str, &u.unit,
-                    ).await {
-                        Ok(norm) => (norm.value, norm.canonical_unit),
-                        Err(_) => (value, u.unit.clone()),
-                    }
-                } else {
-                    (value, u.unit.clone())
-                };
 
                 resolved.push(ExtractedObservation {
                     marker_name: u.marker_name,
                     loinc_code: loinc_code.to_string(),
                     value,
-                    original_value: original_str,
-                    unit: u.unit,
-                    canonical_unit,
-                    canonical_value,
+                    original_value: u.value,
+                    unit: u.unit.clone(),
+                    canonical_unit: u.unit,
+                    canonical_value: value,
                     confidence: conf,
                     detection_limit: None,
                     specimen: u.specimen,
