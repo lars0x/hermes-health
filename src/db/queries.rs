@@ -57,15 +57,7 @@ pub async fn list_biomarkers(pool: &SqlitePool, category: Option<&str>) -> Resul
     Ok(biomarkers)
 }
 
-pub async fn update_biomarker_aliases(pool: &SqlitePool, id: i64, aliases: &[String]) -> Result<()> {
-    let aliases_json = serde_json::to_string(aliases)?;
-    sqlx::query("UPDATE biomarkers SET aliases = ? WHERE id = ?")
-        .bind(&aliases_json)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
+
 
 #[allow(dead_code)]
 pub async fn update_biomarker_ranges(
@@ -201,15 +193,7 @@ pub async fn count_observations_for_import(pool: &SqlitePool, import_id: i64) ->
     Ok(result.0)
 }
 
-pub async fn list_observations_for_import(pool: &SqlitePool, import_id: i64) -> Result<Vec<Observation>> {
-    let observations = sqlx::query_as::<_, Observation>(
-        "SELECT o.* FROM observations o WHERE o.import_id = ? ORDER BY o.id"
-    )
-    .bind(import_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(observations)
-}
+
 
 pub async fn delete_observations_by_import(pool: &SqlitePool, import_id: i64) -> Result<u64> {
     let result = sqlx::query("DELETE FROM observations WHERE import_id = ?")

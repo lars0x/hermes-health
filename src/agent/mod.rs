@@ -98,7 +98,7 @@ pub async fn run_extraction(
 }
 
 async fn run_agentic_extraction(
-    pool: SqlitePool,
+    _pool: SqlitePool,
     catalog: Arc<LoincCatalog>,
     config: Arc<HermesConfig>,
     raw_text: &str,
@@ -116,8 +116,8 @@ async fn run_agentic_extraction(
     let result_slot: Arc<Mutex<Option<ExtractionResult>>> = Arc::new(Mutex::new(None));
 
     let loinc_tool = tools::loinc_lookup::LoincLookupTool::new(catalog.clone());
-    let unit_tool = tools::unit_convert::UnitConvertTool::new(pool.clone(), catalog.clone());
-    let validate_tool = tools::validate_row::ValidateRowTool::new(pool.clone());
+    let unit_tool = tools::unit_convert::UnitConvertTool::new(catalog.clone());
+    let validate_tool = tools::validate_row::ValidateRowTool;
     let submit_tool = tools::submit_results::SubmitResultsTool::new(result_slot.clone());
     let think_tool = tools::think::ThinkTool;
 

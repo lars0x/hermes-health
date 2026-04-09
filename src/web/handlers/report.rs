@@ -297,13 +297,16 @@ pub async fn import_detail(
     // Find skipped observations (extracted but not committed)
     let skipped_observations = if import.status == "committed" {
         if let Some(ref ext) = extraction {
-            let committed = queries::list_observations_for_import(&state.pool, id).await.unwrap_or_default();
-            let mut committed_loinc_codes = std::collections::HashSet::new();
-            for o in &committed {
-                if let Ok(bm) = queries::get_biomarker_by_id(&state.pool, o.biomarker_id).await {
-                    committed_loinc_codes.insert(bm.loinc_code);
-                }
-            }
+            let committed_loinc_codes: std::collections::HashSet<String> =
+                sqlx::query_scalar::<_, String>(
+                    "SELECT b.loinc_code FROM observations o JOIN biomarkers b ON o.biomarker_id = b.id WHERE o.import_id = ?"
+                )
+                .bind(id)
+                .fetch_all(&state.pool)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
             ext.observations.iter().enumerate()
                 .filter(|(_, obs)| !committed_loinc_codes.contains(&obs.loinc_code))
                 .map(|(idx, obs)| {
@@ -578,19 +581,15 @@ pub async fn map_marker(
     State(state): State<AppState>,
     axum::Form(form): axum::Form<MapForm>,
 ) -> Result<Html<String>, HermesError> {
-    if let Some(bm) = queries::get_biomarker_by_loinc(&state.pool, &form.loinc_code).await? {
-        let mut aliases = bm.aliases_vec();
-        if !aliases.iter().any(|a| a.to_lowercase() == form.marker_name.to_lowercase()) {
-            aliases.push(form.marker_name.clone());
-            queries::update_biomarker_aliases(&state.pool, bm.id, &aliases).await?;
-        }
+    // Validate against LOINC catalog only - biomarker is created at commit time
+    if state.catalog.get_by_code(&form.loinc_code).is_some() {
         Ok(Html(format!(
-            r##"<span class="pill pill-supplement">{} mapped</span>"##,
-            form.marker_name
+            r##"<span class="pill pill-supplement">{} mapped to {}</span>"##,
+            form.marker_name, form.loinc_code
         )))
     } else {
         Ok(Html(format!(
-            r##"<span class="text-red">LOINC code {} not found</span>"##,
+            r##"<span class="text-red">LOINC code {} not found in catalog</span>"##,
             form.loinc_code
         )))
     }
