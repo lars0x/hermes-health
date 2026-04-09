@@ -296,47 +296,76 @@ impl LoincCatalog {
     /// abbreviation prefixes, and word reordering (e.g. "LDL Cholesterol"
     /// matches "Cholesterol in LDL").
     pub fn text_search_lab(&self, query: &str, max_results: usize, specimen: Option<&str>) -> Vec<LoincCandidate> {
-        let query_words = tokenize(query);
-        if query_words.is_empty() {
-            return vec![];
-        }
-
-        let specimen_filter: Option<Vec<&str>> = specimen.map(|s| match s.to_lowercase().as_str() {
+        // Use specimen as a ranking hint, not a hard filter. LOINC system
+        // classifications don't always match the lab report's panel grouping
+        // (e.g. eAG is SYSTEM=Bld but appears in the serum/chemistry panel).
+        let preferred: Option<Vec<&str>> = specimen.map(|s| match s.to_lowercase().as_str() {
             "serum" | "plasma" => vec!["Ser", "Plas"],
             "blood" => vec!["Bld", "RBC"],
             "urine" => vec!["Ur"],
-            _ => vec!["Ser", "Plas", "Bld", "RBC", "Ur"],
+            _ => vec![],
         });
 
-        let mut scored: Vec<(f64, u8, usize)> = Vec::new();
-
-        for (idx, entry) in self.entries.iter().enumerate() {
-            let priority = if let Some(ref keywords) = specimen_filter {
-                if !keywords.iter().any(|kw| entry.system.contains(kw)) {
-                    continue;
-                }
+        let specimen_priority = |entry: &LoincEntry| -> u8 {
+            let is_preferred = preferred.as_ref()
+                .map(|kws| kws.iter().any(|kw| entry.system.contains(kw)))
+                .unwrap_or(false);
+            if is_preferred {
                 0u8
             } else if entry.system.contains("Ser") || entry.system.contains("Plas") {
-                0
-            } else if entry.system.contains("Bld") || entry.system.contains("RBC") {
                 1
-            } else if entry.system.contains("Ur") {
+            } else if entry.system.contains("Bld") || entry.system.contains("RBC") {
                 2
-            } else {
+            } else if entry.system.contains("Ur") {
                 3
-            };
+            } else {
+                4
+            }
+        };
 
-            let component_words = tokenize(&entry.component);
-            let long_name_words = tokenize(&entry.long_common_name);
-            let short_name_words = tokenize(&entry.short_name);
+        // --- Tier 1: exact name / alias lookup (high confidence, fast) ---
+        let query_lower = query.to_lowercase();
+        let mut exact_hits: Vec<(f64, u8, usize, MatchType)> = Vec::new();
 
-            let score = word_match_score(&query_words, &component_words)
-                .max(word_match_score(&query_words, &long_name_words))
-                .max(word_match_score(&query_words, &short_name_words));
+        // Exact component or long_common_name match
+        if let Some(indices) = self.by_name_lower.get(&query_lower) {
+            for &idx in indices {
+                let entry = &self.entries[idx];
+                exact_hits.push((1.0, specimen_priority(entry), idx, MatchType::ExactName));
+            }
+        }
 
-            // Require at least 50% of query words to match
-            if score >= 0.5 {
-                scored.push((score, priority, idx));
+        // Alias match
+        if let Some(indices) = self.alias_lookup.get(&query_lower) {
+            for &idx in indices {
+                if exact_hits.iter().any(|(_, _, i, _)| *i == idx) { continue; }
+                let entry = &self.entries[idx];
+                exact_hits.push((0.95, specimen_priority(entry), idx, MatchType::Alias));
+            }
+        }
+
+        // --- Tier 2: word-overlap scoring (handles multi-word, reordering) ---
+        let query_words = tokenize(query);
+        let mut scored: Vec<(f64, u8, usize)> = Vec::new();
+
+        if !query_words.is_empty() {
+            let exact_indices: std::collections::HashSet<usize> =
+                exact_hits.iter().map(|(_, _, idx, _)| *idx).collect();
+
+            for (idx, entry) in self.entries.iter().enumerate() {
+                if exact_indices.contains(&idx) { continue; }
+
+                let component_words = tokenize(&entry.component);
+                let long_name_words = tokenize(&entry.long_common_name);
+                let short_name_words = tokenize(&entry.short_name);
+
+                let score = word_match_score(&query_words, &component_words)
+                    .max(word_match_score(&query_words, &long_name_words))
+                    .max(word_match_score(&query_words, &short_name_words));
+
+                if score >= 0.5 {
+                    scored.push((score, specimen_priority(entry), idx));
+                }
             }
         }
 
@@ -345,20 +374,40 @@ impl LoincCatalog {
                 .then(a.1.cmp(&b.1))
         });
 
-        scored.into_iter().take(max_results).map(|(score, _, idx)| {
+        // Exact/alias hits first, then word-overlap results
+        let mut results: Vec<LoincCandidate> = Vec::with_capacity(max_results);
+
+        exact_hits.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.cmp(&b.1))
+        });
+        for (score, _, idx, mt) in exact_hits {
+            if results.len() >= max_results { break; }
             let entry = &self.entries[idx];
-            LoincCandidate {
+            results.push(LoincCandidate {
+                loinc_code: entry.loinc_num.clone(),
+                canonical_name: entry.long_common_name.clone(),
+                confidence: score,
+                match_type: mt,
+            });
+        }
+        for (score, _, idx) in scored {
+            if results.len() >= max_results { break; }
+            let entry = &self.entries[idx];
+            results.push(LoincCandidate {
                 loinc_code: entry.loinc_num.clone(),
                 canonical_name: entry.long_common_name.clone(),
                 confidence: score,
                 match_type: MatchType::WordMatch,
-            }
-        }).collect()
+            });
+        }
+
+        results
     }
 }
 
-/// LOINC abbreviation synonyms. Short forms used in LOINC catalog entries
-/// are expanded so word_match_score can match them against full clinical names.
+/// LOINC synonyms. Expanded during tokenization so word_match_score can
+/// bridge vocabulary differences between lab reports and LOINC entries.
 const LOINC_SYNONYMS: &[(&str, &str)] = &[
     ("ab", "antibody"),
     ("ag", "antigen"),
@@ -367,6 +416,10 @@ const LOINC_SYNONYMS: &[(&str, &str)] = &[
     ("igg", "immunoglobulin"),
     ("igm", "immunoglobulin"),
     ("iga", "immunoglobulin"),
+    ("adjusted", "corrected"),
+    ("corrected", "adjusted"),
+    ("haematocrit", "hematocrit"),
+    ("hematocrit", "haematocrit"),
 ];
 
 /// Tokenize text into lowercase words, dropping short noise words.
@@ -614,7 +667,7 @@ mod tests {
     #[test]
     fn test_text_search_treponema() {
         let catalog = LoincCatalog::load();
-        let results = catalog.text_search_lab("Treponema pallidum", 5, Some("serum"));
+        let results = catalog.text_search_lab("Treponema pallidum", 25, Some("serum"));
         println!("text_search_lab('Treponema pallidum', serum):");
         for r in &results {
             println!("  {} | {} | {:.2}", r.loinc_code, r.canonical_name, r.confidence);

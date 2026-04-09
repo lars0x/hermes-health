@@ -795,37 +795,48 @@ Confidence guide:
     if parse_resolve_mappings(&final_content).is_empty() && total_tool_calls > 0 {
         tracing::info!("No parseable mappings after {} turns - sending compact summary request", turn);
 
-        // Build a summary of all search results from the conversation log
+        // Build a summary of all search results from the conversation log.
+        // Each assistant turn may have multiple parallel tool calls, so we queue
+        // queries and pair them positionally with the subsequent tool results.
         let mut search_summary = String::new();
-        let mut current_query = String::new();
+        let mut pending_queries: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+        // Deduplicate: keep only the first result per query string, in insertion order
+        let mut seen_queries: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut results_ordered: Vec<(String, String, String)> = Vec::new();
         for msg in &conversation_log {
             if let Some(ref calls) = msg.tool_calls {
                 for tc in calls {
                     if tc.name == "search_loinc" {
-                        current_query = tc.arguments.get("query")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("").to_string();
+                        pending_queries.push_back(
+                            tc.arguments.get("query")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("").to_string()
+                        );
                     }
                 }
             }
-            if msg.role == "tool" && !current_query.is_empty() {
-                // Extract just the top candidate from each tool result
+            if msg.role == "tool" {
+                let query = pending_queries.pop_front().unwrap_or_default();
+                if query.is_empty() || seen_queries.contains(&query) { continue; }
+                seen_queries.insert(query.clone());
                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&msg.content) {
                     if let Some(candidates) = result.get("candidates").and_then(|v| v.as_array()) {
                         if let Some(top) = candidates.first() {
-                            let code = top.get("loinc_code").and_then(|v| v.as_str()).unwrap_or("?");
-                            let name = top.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                            search_summary.push_str(&format!(
-                                "- Query \"{}\": top match {} ({})\n", current_query, code, name
-                            ));
+                            let code = top.get("loinc_code").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+                            let name = top.get("name").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+                            results_ordered.push((query, code, name));
                         } else {
-                            search_summary.push_str(&format!(
-                                "- Query \"{}\": no results\n", current_query
-                            ));
+                            results_ordered.push((query, "none".into(), "no results".into()));
                         }
                     }
                 }
-                current_query.clear();
+            }
+        }
+        for (query, code, name) in &results_ordered {
+            if code == "none" {
+                search_summary.push_str(&format!("- Query \"{}\": no results\n", query));
+            } else {
+                search_summary.push_str(&format!("- Query \"{}\": best match {} ({})\n", query, code, name));
             }
         }
 
@@ -844,6 +855,10 @@ Confidence guide:
             role: "user".into(), content: compact_prompt.clone(), tool_calls: None, thinking: None,
         });
 
+        // Use a larger predict budget for the compact summary: the model must output
+        // one JSON entry per marker and may spend tokens on thinking.
+        let compact_predict = config.ollama.num_predict.max(16384);
+        tracing::debug!("Compact summary ({} search results, {} chars): {}", results_ordered.len(), search_summary.len(), &search_summary[..search_summary.len().min(500)]);
         let request_body = serde_json::json!({
             "model": config.ollama.model,
             "messages": compact_messages,
@@ -851,7 +866,7 @@ Confidence guide:
             "format": "json",
             "options": {
                 "temperature": config.ollama.temperature,
-                "num_predict": config.ollama.num_predict,
+                "num_predict": compact_predict,
                 "num_ctx": config.ollama.num_ctx
             }
         });
