@@ -424,6 +424,7 @@ pub async fn commit(
                 notes: None,
                 report_id: Some(import.report_id),
                 import_id: Some(id),
+                original_value: Some(obs.original_value.clone()),
             };
             match observation::add_observation(&state.pool, &state.catalog, &new_obs).await {
                 Ok(_) => {

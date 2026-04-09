@@ -85,7 +85,13 @@ pub async fn biomarker_detail(
     )
     .await?;
 
-    let obs_timestamps: Vec<i64> = observations
+    // Only include numeric observations in charts
+    let numeric_obs: Vec<&crate::db::models::Observation> = observations
+        .iter()
+        .filter(|o| !o.is_qualitative())
+        .collect();
+
+    let obs_timestamps: Vec<i64> = numeric_obs
         .iter()
         .filter_map(|o| {
             chrono::NaiveDate::parse_from_str(&o.observed_at, "%Y-%m-%d")
@@ -93,7 +99,7 @@ pub async fn biomarker_detail(
                 .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
         })
         .collect();
-    let obs_values: Vec<f64> = observations.iter().map(|o| o.value).collect();
+    let obs_values: Vec<f64> = numeric_obs.iter().map(|o| o.value).collect();
 
     let chart_data = serde_json::json!({
         "timestamps": obs_timestamps,
@@ -188,7 +194,12 @@ pub async fn biomarker_chart(
     )
     .await?;
 
-    let obs_timestamps: Vec<i64> = observations
+    let numeric_obs: Vec<&crate::db::models::Observation> = observations
+        .iter()
+        .filter(|o| !o.is_qualitative())
+        .collect();
+
+    let obs_timestamps: Vec<i64> = numeric_obs
         .iter()
         .filter_map(|o| {
             chrono::NaiveDate::parse_from_str(&o.observed_at, "%Y-%m-%d")
@@ -196,7 +207,7 @@ pub async fn biomarker_chart(
                 .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
         })
         .collect();
-    let obs_values: Vec<f64> = observations.iter().map(|o| o.value).collect();
+    let obs_values: Vec<f64> = numeric_obs.iter().map(|o| o.value).collect();
 
     let chart_data = serde_json::json!({
         "timestamps": obs_timestamps,

@@ -151,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
                     notes,
                     report_id: None,
                     import_id: None,
+                    original_value: None,
                 };
                 let result = services::observation::add_observation(&pool, &catalog, &obs).await?;
                 println!(

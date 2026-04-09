@@ -42,8 +42,21 @@ pub async fn add_observation(
     // 1. Resolve biomarker
     let bm = biomarker::resolve_biomarker(pool, &obs.biomarker, catalog).await?;
 
-    // 2. Normalize value + unit
-    let original_value_str = format!("{}", obs.value);
+    // 2. Determine if qualitative: original_value is present and non-numeric
+    let text_value = obs.original_value.as_ref().and_then(|ov| {
+        let trimmed = ov.trim();
+        // Strip detection limit prefix before checking
+        let numeric_part = trimmed.strip_prefix('<').or(trimmed.strip_prefix('>')).unwrap_or(trimmed).trim();
+        if numeric_part.parse::<f64>().is_err() {
+            Some(trimmed.to_string())
+        } else {
+            None
+        }
+    });
+
+    // 3. Normalize value + unit
+    let original_value_str = obs.original_value.clone()
+        .unwrap_or_else(|| format!("{}", obs.value));
     let normalized = normalize::normalize_observation(
         pool,
         bm.id,
@@ -53,7 +66,7 @@ pub async fn add_observation(
     )
     .await?;
 
-    // 3. Combine notes
+    // 4. Combine notes
     let notes = match (&obs.notes, &normalized.notes_append) {
         (Some(n), Some(a)) => Some(format!("{n}; {a}")),
         (Some(n), None) => Some(n.clone()),
@@ -61,7 +74,7 @@ pub async fn add_observation(
         (None, None) => None,
     };
 
-    // 4. Insert
+    // 5. Insert
     let id = queries::insert_observation(
         pool,
         bm.id,
@@ -76,6 +89,7 @@ pub async fn add_observation(
         obs.fasting,
         notes.as_deref(),
         normalized.detection_limit.as_deref(),
+        text_value.as_deref(),
     )
     .await?;
 

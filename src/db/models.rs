@@ -38,6 +38,9 @@ pub struct Observation {
     pub fasting: Option<bool>,
     pub notes: Option<String>,
     pub detection_limit: Option<String>,
+    /// Qualitative text value (e.g. "Non-reactive", "Negative", "Trace").
+    /// When present, this observation is qualitative and `value` is a placeholder (0.0).
+    pub text_value: Option<String>,
     pub created_at: String,
 }
 
@@ -48,8 +51,16 @@ impl Observation {
 
     #[allow(dead_code)]
     pub fn formatted_value(&self) -> String {
+        if let Some(ref tv) = self.text_value {
+            return tv.clone();
+        }
         let prec = self.precision as usize;
         format!("{:.prec$}", self.value)
+    }
+
+    /// Whether this observation is qualitative (non-numeric).
+    pub fn is_qualitative(&self) -> bool {
+        self.text_value.is_some()
     }
 }
 
@@ -144,6 +155,10 @@ pub struct NewObservation {
     pub report_id: Option<i64>,
     #[serde(default)]
     pub import_id: Option<i64>,
+    /// Raw value text from the lab report (e.g. "Non-reactive", "185", "<0.5").
+    /// Used to preserve qualitative text that cannot be represented as f64.
+    #[serde(default)]
+    pub original_value: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

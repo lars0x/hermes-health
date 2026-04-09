@@ -59,6 +59,7 @@ async fn test_add_observation_same_unit() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -81,6 +82,7 @@ async fn test_add_observation_with_conversion() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -105,6 +107,7 @@ async fn test_hba1c_conversion_with_offset() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -132,6 +135,7 @@ async fn test_trend_analysis() {
             notes: None,
             report_id: None,
             import_id: None,
+        original_value: None,
         };
         observation::add_observation(&pool, &catalog, &obs)
             .await
@@ -169,6 +173,7 @@ async fn test_trend_insufficient_data() {
             notes: None,
             report_id: None,
             import_id: None,
+        original_value: None,
         };
         observation::add_observation(&pool, &catalog, &obs)
             .await
@@ -200,6 +205,7 @@ async fn test_csv_export() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -247,6 +253,7 @@ async fn test_unrecognized_unit_stored_as_is() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await;
     assert!(result.is_ok());
@@ -267,6 +274,7 @@ async fn test_cholesterol_mmol_to_mgdl() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     // 5.51 * 38.67 = 213.07, rounded to 3 sig figs = 213
@@ -291,6 +299,7 @@ async fn test_glucose_mmol_to_mgdl() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     assert!(result.converted);
@@ -311,6 +320,7 @@ async fn test_hba1c_mmolmol_to_percent() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     assert!(result.converted);
@@ -332,6 +342,7 @@ async fn test_cbc_x10e9_normalizes_to_canonical() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     // Should NOT be converted - units are equivalent
@@ -351,6 +362,7 @@ async fn test_rbc_x10e12_normalizes_to_canonical() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     assert_eq!(result.value, 4.8);
@@ -369,6 +381,7 @@ async fn test_same_unit_no_conversion() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     assert!(!result.converted);
@@ -389,6 +402,7 @@ async fn test_case_insensitive_unit_match() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs).await.unwrap();
     // Value should be stored unchanged (no numeric conversion)
@@ -410,6 +424,7 @@ async fn test_observation_precision_preserved() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     let result = observation::add_observation(&pool, &catalog, &obs)
         .await
@@ -432,6 +447,7 @@ async fn test_dashboard_summary() {
         notes: None,
         report_id: None,
         import_id: None,
+        original_value: None,
     };
     observation::add_observation(&pool, &catalog, &obs)
         .await

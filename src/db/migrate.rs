@@ -139,6 +139,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             .await?;
     }
 
+    // Migration 008: add text_value column to observations for qualitative results
+    let has_text_value: bool = sqlx::query_scalar::<_, i32>(
+        "SELECT COUNT(*) FROM pragma_table_info('observations') WHERE name = 'text_value'"
+    )
+    .fetch_one(pool)
+    .await
+    .map(|c| c > 0)
+    .unwrap_or(false);
+    if !has_text_value {
+        sqlx::raw_sql("ALTER TABLE observations ADD COLUMN text_value TEXT")
+            .execute(pool)
+            .await?;
+    }
+
     tracing::info!("Database migrations applied");
     Ok(())
 }

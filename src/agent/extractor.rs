@@ -548,6 +548,14 @@ The tool uses word matching, so search for the words that describe the test. Abb
    - CEA -> search "Carcinoembryonic antigen"
    - AFP -> search "Alpha-1-Fetoprotein"
    - VD/VDRL/Syphilis -> search "Treponema pallidum"
+   - HBsAg -> search "Hepatitis B virus surface antigen"
+   - HBsAb -> search "Hepatitis B virus surface antibody"
+   - HBeAg -> search "Hepatitis B virus e antigen"
+   - HBeAb -> search "Hepatitis B virus e antibody"
+   - HBcAb/Anti-HBc -> search "Hepatitis B virus core antibody"
+   - Anti-HAV -> search "Hepatitis A virus antibody"
+   - Anti-HCV -> search "Hepatitis C virus antibody"
+   - Anti-HIV -> search "HIV 1+2 antibody"
    - Specific Gravity -> search "Specific gravity"
 
 2. Use the specimen parameter when you know the specimen type. This is critical - the same test measured in serum vs urine has a different LOINC code.
@@ -607,6 +615,20 @@ Example 7 - no match after trying alternatives:
   Marker: "Specimen Adequacy"
   -> search_loinc(query="Specimen adequacy") -> no results
   -> This is not a quantitative lab test. Set to_loinc to null.
+
+Example 8 - serology test (ordinal/qualitative):
+  Marker: "Hepatitis Bs Antigen" (value: Non-reactive, specimen: serum)
+  -> search_loinc(query="Hepatitis B virus surface antigen", specimen="serum")
+  -> Pick "5195-3 Hepatitis B virus surface Ag [Presence] in Serum"
+  NOTE: Serology tests are qualitative (Reactive/Non-reactive). This is correct.
+  Hepatitis B surface antigen and Hepatitis B surface antibody are DIFFERENT tests
+  with DIFFERENT LOINC codes - never map one to the other.
+
+## Strict rules
+
+- NEVER assign an unrelated LOINC code as a proxy or fallback. If no matching code exists, use null for to_loinc. It is better to leave a marker unresolved than to assign a wrong code.
+- Each marker MUST map to a code that measures EXACTLY what the original marker measures. A Hepatitis B test must NOT be mapped to a Syphilis code, and vice versa.
+- Every marker in the list must get its own unique LOINC code. Two different markers must never share the same code.
 
 ## Output
 

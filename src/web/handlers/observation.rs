@@ -75,6 +75,7 @@ pub async fn create_observation(
         notes: form.notes.filter(|s| !s.is_empty()),
         report_id: None,
         import_id: None,
+        original_value: None,
     };
 
     match observation::add_observation(&state.pool, &state.catalog, &obs).await {

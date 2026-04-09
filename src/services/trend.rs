@@ -60,6 +60,12 @@ pub async fn compute_trend(
     let observations =
         queries::list_observations_for_biomarker(pool, biomarker_id, Some(&from_str), None).await?;
 
+    // Skip qualitative observations (text_value present) - they have no meaningful numeric value
+    let observations: Vec<Observation> = observations
+        .into_iter()
+        .filter(|o| !o.is_qualitative())
+        .collect();
+
     let points: Vec<ObservationPoint> = observations
         .iter()
         .map(|o| ObservationPoint {

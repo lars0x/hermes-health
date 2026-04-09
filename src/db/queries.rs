@@ -98,10 +98,11 @@ pub async fn insert_observation(
     fasting: Option<bool>,
     notes: Option<&str>,
     detection_limit: Option<&str>,
+    text_value: Option<&str>,
 ) -> Result<i64> {
     let result = sqlx::query(
-        "INSERT INTO observations (biomarker_id, value, original_value, original_unit, precision, observed_at, lab_name, report_id, import_id, fasting, notes, detection_limit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO observations (biomarker_id, value, original_value, original_unit, precision, observed_at, lab_name, report_id, import_id, fasting, notes, detection_limit, text_value)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(biomarker_id)
     .bind(value)
@@ -115,6 +116,7 @@ pub async fn insert_observation(
     .bind(fasting)
     .bind(notes)
     .bind(detection_limit)
+    .bind(text_value)
     .execute(pool)
     .await?;
 

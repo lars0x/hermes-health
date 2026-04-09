@@ -41,17 +41,23 @@
       <tr>
         <td>{{ obs.observed_at }}</td>
         <td>
-          {% set prec = obs.precision %}
-          {% if prec == 0 %}{{ "%.0f"|format(obs.value) }}{% elif prec == 1 %}{{ "%.1f"|format(obs.value) }}{% elif prec == 2 %}{{ "%.2f"|format(obs.value) }}{% else %}{{ obs.value }}{% endif %}
-          {{ biomarker.unit }}
+          {% if obs.text_value %}
+            {{ obs.text_value }}
+          {% else %}
+            {% set prec = obs.precision %}
+            {% if prec == 0 %}{{ "%.0f"|format(obs.value) }}{% elif prec == 1 %}{{ "%.1f"|format(obs.value) }}{% elif prec == 2 %}{{ "%.2f"|format(obs.value) }}{% else %}{{ obs.value }}{% endif %}
+            {{ biomarker.unit }}
+          {% endif %}
         </td>
         <td class="text-secondary" style="font-size: 11px;">
-          {% if obs.original_unit != biomarker.unit %}{{ obs.original_value }} {{ obs.original_unit }}{% endif %}
+          {% if not obs.text_value and obs.original_unit != biomarker.unit %}{{ obs.original_value }} {{ obs.original_unit }}{% endif %}
         </td>
         <td>
           {% if obs.detection_limit %}<span class="text-amber">{{ obs.detection_limit }}</span>{% endif %}
-          {% if biomarker.reference_high and obs.value > biomarker.reference_high %}<span class="flag-H">H</span>{% endif %}
-          {% if biomarker.reference_low and obs.value < biomarker.reference_low %}<span class="flag-L">L</span>{% endif %}
+          {% if not obs.text_value %}
+            {% if biomarker.reference_high and obs.value > biomarker.reference_high %}<span class="flag-H">H</span>{% endif %}
+            {% if biomarker.reference_low and obs.value < biomarker.reference_low %}<span class="flag-L">L</span>{% endif %}
+          {% endif %}
         </td>
         <td class="text-secondary">{{ obs.lab_name|default("") }}</td>
         <td class="notes">{{ obs.notes|default("") }}</td>

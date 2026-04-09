@@ -243,9 +243,9 @@ impl LoincCatalog {
         candidates
     }
 
-    /// Search for quantitative lab tests, optionally filtered by specimen type.
+    /// Search for lab tests, optionally filtered by specimen type.
     /// When specimen is provided, only matching entries are returned.
-    /// When specimen is None, results are ranked: serum/plasma > blood > urine.
+    /// When specimen is None, results are ranked: serum/plasma > blood > urine > other.
     pub fn search_lab(&self, query: &str, max_results: usize, specimen: Option<&str>) -> Vec<LoincCandidate> {
         let all = self.search(query, max_results * 10);
 
@@ -260,9 +260,6 @@ impl LoincCatalog {
         let mut filtered: Vec<(LoincCandidate, u8)> = all.into_iter()
             .filter_map(|c| {
                 let entry = self.get_by_code(&c.loinc_code)?;
-                if entry.scale_typ != "Qn" && entry.scale_typ != "SemiQn" {
-                    return None;
-                }
 
                 if let Some(ref keywords) = specimen_filter {
                     // Strict filter: only entries matching the specimen
@@ -271,7 +268,7 @@ impl LoincCatalog {
                     }
                     Some((c, 0)) // All same priority when specimen is known
                 } else {
-                    // No specimen: prefer serum/plasma > blood/RBC > urine
+                    // No specimen: prefer serum/plasma > blood/RBC > urine > other
                     let priority = if entry.system.contains("Ser") || entry.system.contains("Plas") {
                         0
                     } else if entry.system.contains("Bld") || entry.system.contains("RBC") {
@@ -279,7 +276,7 @@ impl LoincCatalog {
                     } else if entry.system.contains("Ur") {
                         2
                     } else {
-                        return None;
+                        3
                     };
                     Some((c, priority))
                 }
@@ -294,7 +291,7 @@ impl LoincCatalog {
         filtered.into_iter().map(|(c, _)| c).take(max_results).collect()
     }
 
-    /// Word-overlap text search for quantitative lab tests.
+    /// Word-overlap text search for lab tests (all scale types).
     /// Unlike `search_lab()` (Jaro-Winkler), this handles multi-word queries,
     /// abbreviation prefixes, and word reordering (e.g. "LDL Cholesterol"
     /// matches "Cholesterol in LDL").
@@ -314,10 +311,6 @@ impl LoincCatalog {
         let mut scored: Vec<(f64, u8, usize)> = Vec::new();
 
         for (idx, entry) in self.entries.iter().enumerate() {
-            if entry.scale_typ != "Qn" && entry.scale_typ != "SemiQn" {
-                continue;
-            }
-
             let priority = if let Some(ref keywords) = specimen_filter {
                 if !keywords.iter().any(|kw| entry.system.contains(kw)) {
                     continue;
@@ -330,7 +323,7 @@ impl LoincCatalog {
             } else if entry.system.contains("Ur") {
                 2
             } else {
-                continue;
+                3
             };
 
             let component_words = tokenize(&entry.component);
@@ -364,14 +357,38 @@ impl LoincCatalog {
     }
 }
 
+/// LOINC abbreviation synonyms. Short forms used in LOINC catalog entries
+/// are expanded so word_match_score can match them against full clinical names.
+const LOINC_SYNONYMS: &[(&str, &str)] = &[
+    ("ab", "antibody"),
+    ("ag", "antigen"),
+    ("hb", "hemoglobin"),
+    ("ig", "immunoglobulin"),
+    ("igg", "immunoglobulin"),
+    ("igm", "immunoglobulin"),
+    ("iga", "immunoglobulin"),
+];
+
 /// Tokenize text into lowercase words, dropping short noise words.
+/// Expands known LOINC abbreviations so that e.g. "Ab" also matches "antibody".
 fn tokenize(text: &str) -> Vec<String> {
-    text.to_lowercase()
+    let mut words: Vec<String> = text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| w.len() >= 2)
         .filter(|w| !matches!(*w, "in" | "of" | "by" | "or" | "to" | "is" | "at" | "on"))
         .map(String::from)
-        .collect()
+        .collect();
+
+    let mut expansions = Vec::new();
+    for word in &words {
+        for &(abbrev, expansion) in LOINC_SYNONYMS {
+            if word == abbrev {
+                expansions.push(expansion.to_string());
+            }
+        }
+    }
+    words.extend(expansions);
+    words
 }
 
 /// Score how well query words match target words.
@@ -386,8 +403,8 @@ fn word_match_score(query_words: &[String], target_words: &[String]) -> f64 {
         .filter(|qw| {
             target_words.iter().any(|tw| {
                 tw == *qw
-                    || (qw.len() >= 3 && tw.starts_with(qw.as_str()))
-                    || (tw.len() >= 3 && qw.starts_with(tw.as_str()))
+                    || (qw.len() >= 2 && tw.starts_with(qw.as_str()))
+                    || (tw.len() >= 2 && qw.starts_with(tw.as_str()))
             })
         })
         .count();
@@ -530,5 +547,82 @@ mod tests {
         }
         assert!(!results.is_empty(), "Should find Sodium");
         assert_eq!(results[0].loinc_code, "2951-2");
+    }
+
+    // --- Ordinal scale and abbreviation expansion tests ---
+
+    #[test]
+    fn test_tokenize_expands_ab() {
+        let tokens = tokenize("Hepatitis B virus surface Ab");
+        assert!(tokens.contains(&"ab".to_string()), "Should keep 'ab' token");
+        assert!(tokens.contains(&"antibody".to_string()), "Should expand 'ab' to 'antibody'");
+    }
+
+    #[test]
+    fn test_tokenize_expands_ag() {
+        let tokens = tokenize("surface Ag");
+        assert!(tokens.contains(&"ag".to_string()));
+        assert!(tokens.contains(&"antigen".to_string()), "Should expand 'ag' to 'antigen'");
+    }
+
+    #[test]
+    fn test_text_search_hbsag_ordinal() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("Hepatitis B virus surface antigen", 5, Some("serum"));
+        println!("text_search_lab('Hepatitis B virus surface antigen', serum):");
+        for r in &results {
+            let entry = catalog.get_by_code(&r.loinc_code).unwrap();
+            println!("  {} | {} | scale={} | {:.2}", r.loinc_code, r.canonical_name, entry.scale_typ, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should find HBsAg (Ord scale)");
+        // 5195-3 is "Hepatitis B virus surface Ag [Presence] in Serum"
+        assert!(
+            results.iter().any(|r| r.loinc_code == "5195-3"),
+            "Should include 5195-3 (HBsAg in Serum)"
+        );
+    }
+
+    #[test]
+    fn test_text_search_hbsab() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("Hepatitis B virus surface antibody", 5, Some("serum"));
+        println!("text_search_lab('Hepatitis B virus surface antibody', serum):");
+        for r in &results {
+            let entry = catalog.get_by_code(&r.loinc_code).unwrap();
+            println!("  {} | {} | scale={} | {:.2}", r.loinc_code, r.canonical_name, entry.scale_typ, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should find HBsAb");
+        // 16935-9 is "Hepatitis B virus surface Ab [Units/volume] in Serum" (Qn)
+        assert!(
+            results.iter().any(|r| r.loinc_code == "16935-9"),
+            "Should include 16935-9 (HBsAb quantitative)"
+        );
+    }
+
+    #[test]
+    fn test_search_lab_ordinal_hbsag() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.search_lab("Hepatitis B virus surface Ag", 5, Some("serum"));
+        println!("search_lab('Hepatitis B virus surface Ag', serum):");
+        for r in &results {
+            let entry = catalog.get_by_code(&r.loinc_code).unwrap();
+            println!("  {} | {} | scale={} | {:.2}", r.loinc_code, r.canonical_name, entry.scale_typ, r.confidence);
+        }
+        assert!(!results.is_empty(), "search_lab should find HBsAg (Ord scale entries)");
+    }
+
+    #[test]
+    fn test_text_search_treponema() {
+        let catalog = LoincCatalog::load();
+        let results = catalog.text_search_lab("Treponema pallidum", 5, Some("serum"));
+        println!("text_search_lab('Treponema pallidum', serum):");
+        for r in &results {
+            println!("  {} | {} | {:.2}", r.loinc_code, r.canonical_name, r.confidence);
+        }
+        assert!(!results.is_empty(), "Should find Syphilis tests");
+        assert!(
+            results.iter().any(|r| r.loinc_code == "11597-2"),
+            "Should include 11597-2 (Treponema pallidum Ab)"
+        );
     }
 }
