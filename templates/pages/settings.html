@@ -8,4 +8,19 @@
     Edit <code>config.toml</code> directly for now.
   </p>
 </div>
+
+<div class="card" style="max-width: 480px; margin-top: 16px; border-color: var(--danger, #c0392b);">
+  <div class="card-title" style="color: var(--danger, #c0392b);">Danger zone</div>
+  <p style="font-size: 13px; color: var(--text-secondary);">
+    Permanently delete <strong>all</strong> data — uploaded reports, imports,
+    observations, and interventions — and reset the app to its first-boot state.
+    The default tracked biomarkers are restored. This cannot be undone.
+  </p>
+  <button class="btn btn-danger"
+          hx-post="/api/v1/data/reset"
+          hx-confirm="Delete ALL data and reset to a fresh install? This permanently removes every uploaded report, import, observation, and intervention. This cannot be undone."
+          style="background: var(--danger, #c0392b); color: #fff; border: none;">
+    Delete all data
+  </button>
+</div>
 {% endblock %}

@@ -6,8 +6,8 @@ port = 8080
 path = "data/hermes.db"
 
 [ollama]
-url = "http://100.95.56.105:11434"
-model = "qwen3.5:27b-128k"
+url = "http://localhost:11434"
+model = "qwen3.6:27b-128k"
 temperature = 0.0
 timeout_seconds = 300
 num_ctx = 131072

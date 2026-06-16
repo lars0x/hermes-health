@@ -1,7 +1,7 @@
 use hermes_health::db;
 use hermes_health::db::models::NewObservation;
 use hermes_health::export::csv_export;
-use hermes_health::services::{biomarker, loinc, observation, seed, trend};
+use hermes_health::services::{biomarker, loinc, observation, trend};
 
 async fn setup() -> (sqlx::SqlitePool, loinc::LoincCatalog) {
     let pool = db::create_pool(std::path::Path::new(":memory:"))
@@ -9,7 +9,7 @@ async fn setup() -> (sqlx::SqlitePool, loinc::LoincCatalog) {
         .unwrap();
     db::migrate::run_migrations(&pool).await.unwrap();
     let catalog = loinc::LoincCatalog::load();
-    seed::seed_biomarkers(&pool).await.unwrap();
+    // Biomarkers are seeded by the migration runner (migrations/009_seed_biomarkers.sql).
     (pool, catalog)
 }
 

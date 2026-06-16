@@ -44,9 +44,11 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Init => {
-            let count = services::seed::seed_biomarkers(&pool).await?;
+            // Biomarkers are seeded by the migration runner (migrations/009_seed_biomarkers.sql),
+            // which already ran above. Report the resulting catalog size.
+            let count = crate::db::queries::count_biomarkers(&pool).await?;
             let conversions = services::conversions::seed_conversions_from_miracum(&pool).await?;
-            println!("Database initialized. Seeded {} biomarkers, {} unit conversions.", count, conversions);
+            println!("Database initialized. {} biomarkers tracked, {} unit conversions.", count, conversions);
             println!(
                 "LOINC catalog loaded: {} entries.",
                 catalog.entry_count()
@@ -278,14 +280,9 @@ async fn main() -> anyhow::Result<()> {
             let port = port.unwrap_or(cfg.server.port);
             let addr = format!("{host}:{port}");
 
-            // Seed biomarkers if empty
-            let count = crate::db::queries::count_biomarkers(&pool).await?;
-            if count == 0 {
-                services::seed::seed_biomarkers(&pool).await?;
-                tracing::info!("Auto-seeded biomarkers on first run");
-            }
-
-            // Register unit conversions from miracum table
+            // Biomarkers + their unit conversions are seeded by the migration runner
+            // (migrations/009_seed_biomarkers.sql). Register the generic miracum
+            // conversion table on top.
             services::conversions::seed_conversions_from_miracum(&pool).await?;
 
             let catalog = Arc::new(catalog);

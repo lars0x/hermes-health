@@ -1,25 +1,8 @@
-use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::response::Html;
 use axum::routing::{get, post};
 use axum::Router;
 
-use crate::error::HermesError;
 use crate::web::handlers;
-use crate::web::htmx;
 use crate::web::AppState;
-
-async fn settings_page(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Html<String>, HermesError> {
-    let is_htmx = htmx::is_htmx_request(&headers);
-    let ctx = minijinja::context! {
-        is_fragment => is_htmx,
-        current_path => "/settings",
-    };
-    state.templates.render("pages/settings.html", ctx).map(Html)
-}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -33,7 +16,11 @@ pub fn router() -> Router<AppState> {
         .route("/import", get(handlers::report::import_page))
         .route("/imports/list", get(handlers::report::imports_list))
         .route("/imports/{id}", get(handlers::report::import_detail))
-        .route("/settings", get(settings_page))
+        .route("/settings", get(handlers::settings::settings_page))
+        .route(
+            "/api/v1/data/reset",
+            post(handlers::settings::delete_all_data),
+        )
         // HTMX partials
         .route(
             "/api/v1/biomarkers/search",

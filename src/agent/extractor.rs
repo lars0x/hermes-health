@@ -9,6 +9,13 @@ use crate::error::{HermesError, Result};
 use crate::ingest::normalize;
 use crate::services::loinc::LoincCatalog;
 
+/// System instruction for single-shot JSON calls. Thinking is disabled via the
+/// Ollama `think: false` API parameter (the correct mechanism for Qwen3.6, which
+/// dropped the `/think`//`/no_think` soft-switch); this message only keeps the
+/// model from wrapping output in markdown code fences.
+const JSON_SYSTEM_MSG: &str =
+    "Output ONLY raw JSON. Do not wrap the response in markdown code fences.";
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LabResultRow {
     pub marker_name: String,
@@ -29,9 +36,24 @@ pub async fn run_direct_extraction(
 ) -> Result<(ExtractionResult, Vec<crate::agent::LlmLogEntry>)> {
     tracing::info!("Running direct extraction with model {}", config.ollama.model);
 
-    // Truncate to avoid context length issues (find a valid UTF-8 boundary)
-    let max_len = 48_000;
+    // Cap input to fit the model context window rather than an arbitrary byte limit.
+    // Budget = num_ctx minus the reserved output tokens and a small prompt/template
+    // overhead, converted to bytes at a conservative chars-per-token ratio so that
+    // number-dense lab tables won't overflow the window. This effectively removes
+    // truncation for real-world reports while still guarding against pathological input.
+    const CHARS_PER_TOKEN: usize = 3; // conservative for number-dense lab text
+    const PROMPT_OVERHEAD_TOKENS: u32 = 512;
+    let input_token_budget = config
+        .ollama
+        .num_ctx
+        .saturating_sub(config.ollama.num_predict + PROMPT_OVERHEAD_TOKENS);
+    let max_len = input_token_budget as usize * CHARS_PER_TOKEN;
     let text = if raw_text.len() > max_len {
+        tracing::warn!(
+            "Lab report text ({} chars) exceeds context budget ({} chars); truncating",
+            raw_text.len(),
+            max_len
+        );
         let mut end = max_len;
         while end > 0 && !raw_text.is_char_boundary(end) {
             end -= 1;
@@ -42,7 +64,7 @@ pub async fn run_direct_extraction(
     };
 
     let prompt = format!(
-        "/nothink\nExtract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nFor each result, identify the specimen type from section headers or context (e.g. \"Urine Chemistry\", \"Haematology\", \"Serum\").\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"specimen\": \"serum\" or \"urine\" or \"blood\" or \"plasma\" or null}}]}}\n\nLab report:\n{}",
+        "Extract ALL biomarker results from this lab report. The report may be in any language - extract the marker names in English where possible, but preserve the original name if unsure.\nFor each result, identify the specimen type from section headers or context (e.g. \"Urine Chemistry\", \"Haematology\", \"Serum\").\nReturn JSON: {{\"results\": [{{\"marker_name\": str, \"value\": number, \"unit\": str, \"specimen\": \"serum\" or \"urine\" or \"blood\" or \"plasma\" or null}}]}}\n\nLab report:\n{}",
         text
     );
 
@@ -58,7 +80,7 @@ pub async fn run_direct_extraction(
         .json(&serde_json::json!({
             "model": config.ollama.model,
             "messages": [
-                {"role": "system", "content": "/nothink"},
+                {"role": "system", "content": JSON_SYSTEM_MSG},
                 {"role": "user", "content": prompt}
             ],
             "stream": false,
@@ -1026,7 +1048,7 @@ async fn llm_extract_test_date(
     let text = if raw_text.len() > 2000 { &raw_text[..2000] } else { raw_text };
 
     let prompt = format!(
-        "/nothink\nWhat date was the blood test or specimen collected? Look at all dates on this lab report and determine which one represents when the sample was taken from the patient.\nPriority: Date Collected > Specimen Date > Date Received (acceptable proxy - specimen is typically collected the same day it is received) > any other date that is NOT a report/print date.\nYou MUST return a date if any reasonable candidate exists. Only return null if there are truly no dates on the report at all.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\", \"source_field\": \"the field name you found it in\", \"reasoning\": \"brief explanation of why you chose this date\"}}.\n\n{}",
+        "What date was the blood test or specimen collected? Look at all dates on this lab report and determine which one represents when the sample was taken from the patient.\nPriority: Date Collected > Specimen Date > Date Received (acceptable proxy - specimen is typically collected the same day it is received) > any other date that is NOT a report/print date.\nYou MUST return a date if any reasonable candidate exists. Only return null if there are truly no dates on the report at all.\nReturn JSON: {{\"test_date\": \"YYYY-MM-DD\", \"source_field\": \"the field name you found it in\", \"reasoning\": \"brief explanation of why you chose this date\"}}.\n\n{}",
         text
     );
 
@@ -1035,7 +1057,7 @@ async fn llm_extract_test_date(
         .json(&serde_json::json!({
             "model": config.ollama.model,
             "messages": [
-                {"role": "system", "content": "/nothink"},
+                {"role": "system", "content": JSON_SYSTEM_MSG},
                 {"role": "user", "content": prompt}
             ],
             "stream": false,

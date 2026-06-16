@@ -5,6 +5,7 @@ use crate::error::Result;
 const INIT_SQL: &str = include_str!("../../migrations/001_init.sql");
 const IMPORTS_SQL: &str = include_str!("../../migrations/003_imports_table.sql");
 const OVERWRITES_SQL: &str = include_str!("../../migrations/004_import_overwrites.sql");
+const SEED_SQL: &str = include_str!("../../migrations/009_seed_biomarkers.sql");
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::raw_sql(INIT_SQL).execute(pool).await?;
@@ -152,6 +153,11 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+
+    // Migration 009: seed default biomarkers and their unit conversions.
+    // Idempotent (INSERT OR IGNORE), so it runs harmlessly on every startup and
+    // is the single source of truth for the seeded catalog.
+    sqlx::raw_sql(SEED_SQL).execute(pool).await?;
 
     tracing::info!("Database migrations applied");
     Ok(())
