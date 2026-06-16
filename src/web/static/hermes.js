@@ -202,3 +202,37 @@ window.addEventListener('resize', function() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(initCharts, 200);
 });
+
+// --- Date-of-birth picker (Settings) -----------------------------------
+// Native <input type="date"> can't render dd/mm/yyyy, so we show a text field
+// in dd/mm/yyyy and drive a hidden native date input only for its calendar
+// popup. The visible text field is what submits (the server parses dd/mm/yyyy).
+function dobIsoToDisplay(iso) {
+  var p = iso.split('-');
+  if (p.length !== 3) return '';
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+function dobDisplayToIso(s) {
+  var m = (s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+}
+// Calendar button opens the native picker, seeded from the current text value.
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest && e.target.closest('#dob-pick');
+  if (!btn) return;
+  var form = btn.closest('form');
+  var disp = form && form.querySelector('#dob');
+  var nat = form && form.querySelector('#dob-native');
+  if (!disp || !nat) return;
+  var iso = dobDisplayToIso(disp.value);
+  if (iso) nat.value = iso;
+  if (typeof nat.showPicker === 'function') nat.showPicker(); else nat.click();
+});
+// Picking a date writes it back into the visible field as dd/mm/yyyy.
+document.addEventListener('change', function(e) {
+  if (!e.target || e.target.id !== 'dob-native') return;
+  var form = e.target.closest('form');
+  var disp = form && form.querySelector('#dob');
+  if (disp && e.target.value) disp.value = dobIsoToDisplay(e.target.value);
+});

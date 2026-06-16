@@ -102,3 +102,76 @@ pub async fn create_observation(
         ))),
     }
 }
+
+/// Flat table of every committed observation (the human datapoints loaded from
+/// reports, plus any added manually), joined with its biomarker and source report.
+pub async fn observations_table(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Html<String>, HermesError> {
+    let is_htmx = htmx::is_htmx_request(&headers);
+
+    let observations = crate::db::queries::list_all_observations(&state.pool, None, None).await?;
+    let biomarkers = crate::services::biomarker::list_biomarkers(&state.pool, None).await?;
+    let reports = crate::db::queries::list_reports(&state.pool).await?;
+
+    // list_all_observations returns ascending by date; show newest first.
+    let mut rows: Vec<minijinja::Value> = Vec::new();
+    for o in observations.iter().rev() {
+        let bm = biomarkers.iter().find(|b| b.id == o.biomarker_id);
+
+        // Qualitative results (text_value) carry no numeric range to assess.
+        let status = match bm {
+            _ if o.text_value.is_some() => "qualitative".to_string(),
+            Some(b) => crate::services::biomarker::range_status(o.value, b),
+            None => "no_data".to_string(),
+        };
+
+        let unit = bm
+            .map(|b| b.unit.clone())
+            .unwrap_or_else(|| o.original_unit.clone());
+
+        let result = if let Some(tv) = &o.text_value {
+            tv.clone()
+        } else {
+            let p = o.precision.max(0) as usize;
+            let prefix = o.detection_limit.as_deref().unwrap_or("");
+            format!("{}{:.*} {}", prefix, p, o.value, unit)
+        };
+
+        let source = o
+            .report_id
+            .and_then(|rid| reports.iter().find(|r| r.id == rid))
+            .map(|r| r.filename.clone());
+
+        let fasting = match o.fasting {
+            Some(true) => "Yes",
+            Some(false) => "No",
+            None => "—",
+        };
+
+        rows.push(minijinja::context! {
+            date => o.observed_at.clone(),
+            biomarker_id => o.biomarker_id,
+            biomarker => bm.map(|b| b.name.clone()).unwrap_or_else(|| "(unknown)".to_string()),
+            category => bm.map(|b| b.category.clone()).unwrap_or_default(),
+            result => result,
+            reference_low => bm.and_then(|b| b.reference_low),
+            reference_high => bm.and_then(|b| b.reference_high),
+            optimal_low => bm.and_then(|b| b.optimal_low),
+            optimal_high => bm.and_then(|b| b.optimal_high),
+            status => status,
+            fasting => fasting,
+            source => source,
+            import_id => o.import_id,
+        });
+    }
+
+    let ctx = minijinja::context! {
+        is_fragment => is_htmx,
+        current_path => "/observations",
+        rows => rows,
+        count => observations.len(),
+    };
+    state.templates.render("pages/observations.html", ctx).map(Html)
+}

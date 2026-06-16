@@ -74,4 +74,10 @@
   Reference: {{ biomarker.reference_low|default("-") }}-{{ biomarker.reference_high|default("-") }} {{ biomarker.unit }}
   &middot; Optimal: {{ biomarker.optimal_low|default("-") }}-{{ biomarker.optimal_high|default("-") }} {{ biomarker.unit }}
 </div>
+{% if biomarker.reference_source or biomarker.optimal_source %}
+<div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
+  {% if biomarker.reference_source %}Reference: {{ biomarker.reference_source }}{% endif %}
+  {% if biomarker.optimal_source %}&middot; Optimal: {{ biomarker.optimal_source }}{% endif %}
+</div>
+{% endif %}
 {% endblock %}

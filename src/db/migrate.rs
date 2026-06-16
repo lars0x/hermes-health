@@ -6,6 +6,8 @@ const INIT_SQL: &str = include_str!("../../migrations/001_init.sql");
 const IMPORTS_SQL: &str = include_str!("../../migrations/003_imports_table.sql");
 const OVERWRITES_SQL: &str = include_str!("../../migrations/004_import_overwrites.sql");
 const SEED_SQL: &str = include_str!("../../migrations/009_seed_biomarkers.sql");
+const RANGE_TABLES_SQL: &str = include_str!("../../migrations/010_range_tables.sql");
+const SEED_RANGES_SQL: &str = include_str!("../../migrations/011_seed_ranges.sql");
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::raw_sql(INIT_SQL).execute(pool).await?;
@@ -158,6 +160,32 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Idempotent (INSERT OR IGNORE), so it runs harmlessly on every startup and
     // is the single source of truth for the seeded catalog.
     sqlx::raw_sql(SEED_SQL).execute(pool).await?;
+
+    // Migration 010: reference_ranges / optimal_ranges / app_settings tables.
+    sqlx::raw_sql(RANGE_TABLES_SQL).execute(pool).await?;
+
+    // Migration 010b: drop the legacy single-range columns from biomarkers (now
+    // superseded by the reference_ranges / optimal_ranges tables). Guarded so it
+    // is a no-op on fresh databases that never had the columns.
+    for col in ["reference_low", "reference_high", "optimal_low", "optimal_high"] {
+        let exists: bool = sqlx::query_scalar::<_, i32>(
+            &format!("SELECT COUNT(*) FROM pragma_table_info('biomarkers') WHERE name = '{col}'")
+        )
+        .fetch_one(pool)
+        .await
+        .map(|c| c > 0)
+        .unwrap_or(false);
+        if exists {
+            sqlx::raw_sql(&format!("ALTER TABLE biomarkers DROP COLUMN {col}"))
+                .execute(pool)
+                .await?;
+            tracing::info!("Dropped legacy biomarkers.{} column", col);
+        }
+    }
+
+    // Migration 011: seed default reference & optimal ranges (keyed by loinc_code,
+    // so it must run after the biomarker seed above). Idempotent (INSERT OR IGNORE).
+    sqlx::raw_sql(SEED_RANGES_SQL).execute(pool).await?;
 
     tracing::info!("Database migrations applied");
     Ok(())

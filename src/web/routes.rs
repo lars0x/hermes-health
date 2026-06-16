@@ -10,6 +10,7 @@ pub fn router() -> Router<AppState> {
         .route("/", get(handlers::dashboard::dashboard))
         .route("/biomarkers", get(handlers::biomarker::biomarkers_list))
         .route("/biomarkers/{id}", get(handlers::biomarker::biomarker_detail))
+        .route("/observations", get(handlers::observation::observations_table))
         .route("/entry", get(handlers::observation::data_entry_page))
         .route("/interventions", get(handlers::intervention::interventions_page))
         .route("/interventions/{id}", get(handlers::intervention::intervention_detail))
@@ -20,6 +21,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/data/reset",
             post(handlers::settings::delete_all_data),
+        )
+        .route(
+            "/api/v1/settings/profile",
+            post(handlers::settings::update_profile),
         )
         // HTMX partials
         .route(

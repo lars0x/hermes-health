@@ -7,11 +7,9 @@ CREATE TABLE IF NOT EXISTS biomarkers (
     aliases TEXT NOT NULL DEFAULT '[]',  -- JSON array of alternate names
     unit TEXT NOT NULL,                   -- UCUM canonical unit
     category TEXT NOT NULL,               -- e.g. Lipid Panel, Metabolic, etc.
-    reference_low REAL,
-    reference_high REAL,
-    optimal_low REAL,
-    optimal_high REAL,
     source TEXT NOT NULL DEFAULT 'measured'  -- 'measured' or 'calculated'
+    -- Reference/optimal ranges live in the reference_ranges / optimal_ranges
+    -- tables (see migration 010), resolved by sex + age at query time.
 );
 
 CREATE TABLE IF NOT EXISTS observations (

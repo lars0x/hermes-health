@@ -2,11 +2,36 @@
 {% block title %}Settings - Hermes Health{% endblock %}
 {% block content %}
 <div class="card" style="max-width: 480px;">
-  <div class="card-title">Settings</div>
-  <p style="font-size: 13px; color: var(--text-secondary);">
-    Settings configuration will be available in a future release.
-    Edit <code>config.toml</code> directly for now.
+  <div class="card-title">Profile</div>
+  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+    Your biological sex and date of birth select which reference and optimal
+    ranges apply. Several markers (testosterone, ferritin, hemoglobin, creatinine,
+    ALT/GGT, DHEA-S, and more) differ by sex and age. Leave blank to use the
+    sex-agnostic, all-ages ranges.
   </p>
+  <form hx-post="/api/v1/settings/profile" hx-target="#profile-result" hx-swap="innerHTML">
+    <label style="display: block; font-size: 13px; margin-bottom: 4px;">Sex</label>
+    <select name="sex" style="margin-bottom: 12px; padding: 6px; width: 100%;">
+      <option value="" {% if not profile_sex %}selected{% endif %}>Not specified</option>
+      <option value="male" {% if profile_sex == "male" %}selected{% endif %}>Male</option>
+      <option value="female" {% if profile_sex == "female" %}selected{% endif %}>Female</option>
+    </select>
+
+    <label style="display: block; font-size: 13px; margin-bottom: 4px;">Date of birth</label>
+    <div style="display: flex; gap: 6px; margin-bottom: 12px; position: relative;">
+      <input type="text" id="dob" name="dob" value="{{ profile_dob }}"
+             placeholder="dd/mm/yyyy" pattern="\d{1,2}/\d{1,2}/\d{4}" inputmode="numeric"
+             title="Enter date as dd/mm/yyyy"
+             style="flex: 1; padding: 6px;">
+      <button type="button" id="dob-pick" title="Pick a date"
+              style="padding: 6px 10px; cursor: pointer;">📅</button>
+      <input type="date" id="dob-native" value="{{ profile_dob_iso }}" tabindex="-1" aria-hidden="true"
+             style="position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none;">
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save profile</button>
+  </form>
+  <div id="profile-result" style="margin-top: 12px;"></div>
 </div>
 
 <div class="card" style="max-width: 480px; margin-top: 16px; border-color: var(--danger, #c0392b);">

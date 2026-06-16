@@ -1,7 +1,10 @@
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse, Response};
+use axum::Form;
+use serde::Deserialize;
 
+use crate::db::queries;
 use crate::error::HermesError;
 use crate::web::htmx;
 use crate::web::AppState;
@@ -12,11 +15,65 @@ pub async fn settings_page(
     State(state): State<AppState>,
 ) -> Result<Html<String>, HermesError> {
     let is_htmx = htmx::is_htmx_request(&headers);
+    let sex = queries::get_setting(&state.pool, "profile_sex").await?;
+    // Stored canonically as YYYY-MM-DD. The visible field shows DD/MM/YYYY; the
+    // hidden native date input (calendar popup) needs the ISO value.
+    let dob_iso = queries::get_setting(&state.pool, "profile_dob")
+        .await?
+        .filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
+        .unwrap_or_default();
+    let dob_display = chrono::NaiveDate::parse_from_str(&dob_iso, "%Y-%m-%d")
+        .map(|d| d.format("%d/%m/%Y").to_string())
+        .unwrap_or_default();
     let ctx = minijinja::context! {
         is_fragment => is_htmx,
         current_path => "/settings",
+        profile_sex => sex.unwrap_or_default(),
+        profile_dob => dob_display,
+        profile_dob_iso => dob_iso,
     };
     state.templates.render("pages/settings.html", ctx).map(Html)
+}
+
+#[derive(Deserialize)]
+pub struct ProfileForm {
+    pub sex: Option<String>,
+    pub dob: Option<String>,
+}
+
+/// Save the profile (sex + date of birth) that drives sex/age range resolution.
+/// Empty values clear the setting (back to the sex-agnostic / open-age fallback).
+pub async fn update_profile(
+    State(state): State<AppState>,
+    Form(form): Form<ProfileForm>,
+) -> Result<Html<String>, HermesError> {
+    // Sex: only 'male'/'female' are stored; anything else clears it.
+    match form.sex.as_deref() {
+        Some("male") => queries::set_setting(&state.pool, "profile_sex", "male").await?,
+        Some("female") => queries::set_setting(&state.pool, "profile_sex", "female").await?,
+        _ => {
+            queries::set_setting(&state.pool, "profile_sex", "").await?;
+        }
+    }
+
+    // DOB comes in as DD/MM/YYYY (also accept YYYY-MM-DD); store canonically as
+    // YYYY-MM-DD. Anything unparseable clears the setting.
+    let dob = form
+        .dob
+        .as_deref()
+        .map(str::trim)
+        .and_then(|d| {
+            chrono::NaiveDate::parse_from_str(d, "%d/%m/%Y")
+                .or_else(|_| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d"))
+                .ok()
+        })
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    queries::set_setting(&state.pool, "profile_dob", &dob).await?;
+
+    Ok(Html(
+        r#"<div class="alert alert-success">Profile saved. Ranges now resolve to your sex and age.</div>"#.to_string(),
+    ))
 }
 
 /// Directory uploaded report files are written to (see report::upload).

@@ -381,11 +381,13 @@ mod tests {
             aliases: "[]".to_string(),
             unit: "mg/dL".to_string(),
             category: "Lipid Panel".to_string(),
+            source: "measured".to_string(),
             reference_low: Some(125.0),
             reference_high: Some(200.0),
             optimal_low: Some(150.0),
             optimal_high: Some(180.0),
-            source: "measured".to_string(),
+            reference_source: None,
+            optimal_source: None,
         };
 
         // Value above optimal and increasing = worsening

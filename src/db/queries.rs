@@ -8,18 +8,14 @@ use crate::error::{HermesError, Result};
 pub async fn insert_biomarker(pool: &SqlitePool, b: &NewBiomarker) -> Result<i64> {
     let aliases_json = serde_json::to_string(&b.aliases)?;
     let result = sqlx::query(
-        "INSERT INTO biomarkers (loinc_code, name, aliases, unit, category, reference_low, reference_high, optimal_low, optimal_high, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO biomarkers (loinc_code, name, aliases, unit, category, source)
+         VALUES (?, ?, ?, ?, ?, ?)"
     )
     .bind(&b.loinc_code)
     .bind(&b.name)
     .bind(&aliases_json)
     .bind(&b.unit)
     .bind(&b.category)
-    .bind(b.reference_low)
-    .bind(b.reference_high)
-    .bind(b.optimal_low)
-    .bind(b.optimal_high)
     .bind(&b.source)
     .execute(pool)
     .await?;
@@ -28,23 +24,28 @@ pub async fn insert_biomarker(pool: &SqlitePool, b: &NewBiomarker) -> Result<i64
 }
 
 pub async fn get_biomarker_by_id(pool: &SqlitePool, id: i64) -> Result<Biomarker> {
-    sqlx::query_as::<_, Biomarker>("SELECT * FROM biomarkers WHERE id = ?")
+    let mut bm = sqlx::query_as::<_, Biomarker>("SELECT * FROM biomarkers WHERE id = ?")
         .bind(id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| HermesError::NotFound(format!("biomarker id={id}")))
+        .ok_or_else(|| HermesError::NotFound(format!("biomarker id={id}")))?;
+    apply_ranges(pool, std::slice::from_mut(&mut bm)).await?;
+    Ok(bm)
 }
 
 pub async fn get_biomarker_by_loinc(pool: &SqlitePool, loinc_code: &str) -> Result<Option<Biomarker>> {
-    let result = sqlx::query_as::<_, Biomarker>("SELECT * FROM biomarkers WHERE loinc_code = ?")
+    let mut result = sqlx::query_as::<_, Biomarker>("SELECT * FROM biomarkers WHERE loinc_code = ?")
         .bind(loinc_code)
         .fetch_optional(pool)
         .await?;
+    if let Some(bm) = result.as_mut() {
+        apply_ranges(pool, std::slice::from_mut(bm)).await?;
+    }
     Ok(result)
 }
 
 pub async fn list_biomarkers(pool: &SqlitePool, category: Option<&str>) -> Result<Vec<Biomarker>> {
-    let biomarkers = if let Some(cat) = category {
+    let mut biomarkers = if let Some(cat) = category {
         sqlx::query_as::<_, Biomarker>("SELECT * FROM biomarkers WHERE category = ? ORDER BY name")
             .bind(cat)
             .fetch_all(pool)
@@ -54,30 +55,144 @@ pub async fn list_biomarkers(pool: &SqlitePool, category: Option<&str>) -> Resul
             .fetch_all(pool)
             .await?
     };
+    apply_ranges(pool, &mut biomarkers).await?;
     Ok(biomarkers)
 }
 
+// --- App settings (key/value) ---
 
+pub async fn get_setting(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM app_settings WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| r.0))
+}
 
-#[allow(dead_code)]
-pub async fn update_biomarker_ranges(
-    pool: &SqlitePool,
-    id: i64,
-    reference_low: Option<f64>,
-    reference_high: Option<f64>,
-    optimal_low: Option<f64>,
-    optimal_high: Option<f64>,
-) -> Result<()> {
+pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()> {
     sqlx::query(
-        "UPDATE biomarkers SET reference_low = ?, reference_high = ?, optimal_low = ?, optimal_high = ? WHERE id = ?"
+        "INSERT INTO app_settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
-    .bind(reference_low)
-    .bind(reference_high)
-    .bind(optimal_low)
-    .bind(optimal_high)
-    .bind(id)
+    .bind(key)
+    .bind(value)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+// --- Reference / optimal range resolution ---
+
+#[derive(sqlx::FromRow)]
+struct RangeRow {
+    biomarker_id: i64,
+    sex: String,
+    age_min: i64,
+    age_max: i64,
+    low: Option<f64>,
+    high: Option<f64>,
+    source: Option<String>,
+}
+
+/// The configured profile sex ('male'/'female') and the profile's current age in
+/// years (computed from the stored date of birth). Either may be None when unset.
+async fn profile_sex_age(pool: &SqlitePool) -> (Option<String>, Option<i64>) {
+    use chrono::Datelike;
+
+    let sex = get_setting(pool, "profile_sex")
+        .await
+        .ok()
+        .flatten()
+        .filter(|s| s == "male" || s == "female");
+
+    let age = get_setting(pool, "profile_dob")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|dob| chrono::NaiveDate::parse_from_str(&dob, "%Y-%m-%d").ok())
+        .map(|dob| {
+            let today = chrono::Local::now().date_naive();
+            let mut years = today.year() - dob.year();
+            if (today.month(), today.day()) < (dob.month(), dob.day()) {
+                years -= 1;
+            }
+            years as i64
+        });
+
+    (sex, age)
+}
+
+/// Pick the most appropriate default range row for the given sex + age from a
+/// biomarker's candidate rows. Prefers the configured sex over 'any', and the
+/// narrowest matching age band; with age unknown, falls back to the widest
+/// (open-age) band.
+fn pick_range<'a>(
+    rows: &'a [RangeRow],
+    sex: &Option<String>,
+    age: &Option<i64>,
+) -> Option<&'a RangeRow> {
+    let prefs: Vec<&str> = match sex {
+        Some(s) => vec![s.as_str(), "any"],
+        None => vec!["any"],
+    };
+    for pref in prefs {
+        let cands = rows.iter().filter(|r| r.sex == pref);
+        let best = match age {
+            Some(a) => cands
+                .filter(|r| r.age_min <= *a && *a <= r.age_max)
+                .min_by_key(|r| r.age_max - r.age_min),
+            None => cands.max_by_key(|r| r.age_max - r.age_min),
+        };
+        if best.is_some() {
+            return best;
+        }
+    }
+    None
+}
+
+/// Resolve and fill the reference/optimal range fields on each biomarker from the
+/// reference_ranges and optimal_ranges tables, using the profile's sex and age.
+/// Leaves the fields as None where a biomarker has no matching default range.
+async fn apply_ranges(pool: &SqlitePool, biomarkers: &mut [Biomarker]) -> Result<()> {
+    use std::collections::HashMap;
+
+    if biomarkers.is_empty() {
+        return Ok(());
+    }
+
+    let (sex, age) = profile_sex_age(pool).await;
+
+    let load = |table: &'static str| async move {
+        sqlx::query_as::<_, RangeRow>(&format!(
+            "SELECT biomarker_id, sex, age_min, age_max, low, high, source \
+             FROM {table} WHERE is_default = 1"
+        ))
+        .fetch_all(pool)
+        .await
+    };
+
+    let mut ref_map: HashMap<i64, Vec<RangeRow>> = HashMap::new();
+    for r in load("reference_ranges").await? {
+        ref_map.entry(r.biomarker_id).or_default().push(r);
+    }
+    let mut opt_map: HashMap<i64, Vec<RangeRow>> = HashMap::new();
+    for r in load("optimal_ranges").await? {
+        opt_map.entry(r.biomarker_id).or_default().push(r);
+    }
+
+    for bm in biomarkers.iter_mut() {
+        if let Some(best) = ref_map.get(&bm.id).and_then(|rows| pick_range(rows, &sex, &age)) {
+            bm.reference_low = best.low;
+            bm.reference_high = best.high;
+            bm.reference_source = best.source.clone();
+        }
+        if let Some(best) = opt_map.get(&bm.id).and_then(|rows| pick_range(rows, &sex, &age)) {
+            bm.optimal_low = best.low;
+            bm.optimal_high = best.high;
+            bm.optimal_source = best.source.clone();
+        }
+    }
+
     Ok(())
 }
 

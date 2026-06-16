@@ -10,11 +10,25 @@ pub struct Biomarker {
     pub aliases: String, // JSON array stored as TEXT
     pub unit: String,
     pub category: String,
-    pub reference_low: Option<f64>,
-    pub reference_high: Option<f64>,
-    pub optimal_low: Option<f64>,
-    pub optimal_high: Option<f64>,
     pub source: String,
+    // Ranges no longer live on the biomarkers table; they are resolved from the
+    // reference_ranges / optimal_ranges tables (by sex + age) and filled in here
+    // at query time. `#[sqlx(default)]` lets `SELECT * FROM biomarkers` map onto
+    // this struct without these columns existing.
+    #[sqlx(default)]
+    pub reference_low: Option<f64>,
+    #[sqlx(default)]
+    pub reference_high: Option<f64>,
+    #[sqlx(default)]
+    pub optimal_low: Option<f64>,
+    #[sqlx(default)]
+    pub optimal_high: Option<f64>,
+    /// Provenance of the resolved reference range (e.g. "Mayo Clinic Labs 2024").
+    #[sqlx(default)]
+    pub reference_source: Option<String>,
+    /// Provenance of the resolved optimal range.
+    #[sqlx(default)]
+    pub optimal_source: Option<String>,
 }
 
 impl Biomarker {
@@ -135,10 +149,6 @@ pub struct NewBiomarker {
     pub aliases: Vec<String>,
     pub unit: String,
     pub category: String,
-    pub reference_low: Option<f64>,
-    pub reference_high: Option<f64>,
-    pub optimal_low: Option<f64>,
-    pub optimal_high: Option<f64>,
     pub source: String,
 }
 

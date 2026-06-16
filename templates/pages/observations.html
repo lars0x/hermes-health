@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Observations - Hermes Health{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+  <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px;">
+    <h1 style="font-size: 18px; font-weight: 500;">Observations</h1>
+    <span style="font-size: 12px; color: var(--text-secondary);">{{ count }} datapoint{{ "" if count == 1 else "s" }}</span>
+  </div>
+
+  {% if rows %}
+  <div class="card">
+    <table class="obs-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Biomarker</th>
+          <th>Category</th>
+          <th>Result</th>
+          <th>Reference</th>
+          <th>Optimal</th>
+          <th>Status</th>
+          <th>Fasting</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td style="white-space: nowrap;">{{ r.date }}</td>
+          <td><a href="/biomarkers/{{ r.biomarker_id }}" style="font-weight: 500;">{{ r.biomarker }}</a></td>
+          <td style="font-size: 12px; color: var(--text-secondary);">{{ r.category }}</td>
+          <td style="white-space: nowrap;">
+            <span class="{% if r.status == 'out_of_reference' %}text-red{% elif r.status == 'suboptimal' %}text-amber{% elif r.status == 'in_range' %}text-green{% endif %}">{{ r.result }}</span>
+          </td>
+          <td style="font-size: 12px; color: var(--text-secondary); white-space: nowrap;">{{ r.reference_low|default("-") }} - {{ r.reference_high|default("-") }}</td>
+          <td style="font-size: 12px; color: var(--text-secondary); white-space: nowrap;">{{ r.optimal_low|default("-") }} - {{ r.optimal_high|default("-") }}</td>
+          <td>
+            {% if r.status == "out_of_reference" %}
+              <span class="pill pill-medication">out of range</span>
+            {% elif r.status == "suboptimal" %}
+              <span class="pill" style="background: var(--amber-bg); color: var(--amber-dark);">suboptimal</span>
+            {% elif r.status == "in_range" %}
+              <span class="pill pill-exercise">optimal</span>
+            {% elif r.status == "no_range" %}
+              <span class="pill pill-other">no ranges</span>
+            {% else %}
+              <span class="text-secondary" style="font-size: 12px;">—</span>
+            {% endif %}
+          </td>
+          <td style="font-size: 12px;">{{ r.fasting }}</td>
+          <td style="font-size: 12px; color: var(--text-secondary);">
+            {% if r.source %}
+              {% if r.import_id %}<a href="/imports/{{ r.import_id }}">{{ r.source }}</a>{% else %}{{ r.source }}{% endif %}
+            {% else %}<span class="text-secondary">manual</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card">
+    <p style="font-size: 13px; color: var(--text-secondary);">
+      No observations yet. Upload a lab report (Add Data) and commit it to populate this table.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

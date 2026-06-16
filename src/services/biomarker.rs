@@ -53,10 +53,6 @@ pub async fn resolve_biomarker(
                         entry.example_ucum_units.clone()
                     },
                     category: entry.class.clone(),
-                    reference_low: None,
-                    reference_high: None,
-                    optimal_low: None,
-                    optimal_high: None,
                     source: "measured".to_string(),
                 };
 
